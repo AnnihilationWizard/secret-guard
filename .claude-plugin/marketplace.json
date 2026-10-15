@@ -1,0 +1,9 @@
+{
+  "name": "secret-guard",
+  "description": "A Claude Code mod that adds a gitleaks pre-commit hook to each Git project you open",
+  "owner": {
+    "name": "AnnihilationWizard",
+    "url": "https://github.com/AnnihilationWizard"
+  },
+  "plugins": [{ "name": "secret-guard", "source": "./" }]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "secret-guard",
+  "version": "1.0.0",
+  "description": "Add a gitleaks pre-commit hook to each Git project you open in Claude Code: pre-commit for most projects, Husky for JS/TS",
+  "author": {
+    "name": "AnnihilationWizard",
+    "url": "https://github.com/AnnihilationWizard"
+  },
+  "homepage": "https://github.com/AnnihilationWizard/secret-guard",
+  "repository": "https://github.com/AnnihilationWizard/secret-guard",
+  "license": "MIT",
+  "keywords": ["claude-code", "mod", "gitleaks", "pre-commit", "husky", "secret-scanning"],
+  "userConfig": {
+    "autoInstallHusky": {
+      "type": "boolean",
+      "title": "Auto-install Husky",
+      "description": "In a JS/TS project without husky, add it as a dev dependency with the project's package manager (changes package.json and the lockfile). When off, secret-guard only shows the install command.",
+      "default": false
+    }
+  }
+}

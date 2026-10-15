@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" width="960" height="400" role="img" aria-labelledby="title desc">
+  <title id="title">secret-guard before and after</title>
+  <desc id="desc">Left: without secret-guard, a commit containing a GitHub token goes into history. Right: with secret-guard, Claude Code sets up a gitleaks hook at session start and the same commit is stopped.</desc>
+  <style>
+    .panel { fill: #0d1117; stroke: #30363d; stroke-width: 1.5; }
+    .bar { fill: #161b22; }
+    .dot { fill: #30363d; }
+    .head { font: 600 15px -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #e6edf3; }
+    .sub { font: 13px -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #8b949e; }
+    .mono { font: 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #c9d1d9; }
+    .dim { fill: #8b949e; }
+    .ok { fill: #3fb950; }
+    .bad { fill: #f85149; }
+    .warn { fill: #d29922; }
+    .accent { fill: #d97757; }
+  </style>
+  <rect width="960" height="400" fill="#ffffff" fill-opacity="0"/>
+
+  <!-- Left panel -->
+  <rect class="panel" x="16" y="16" width="452" height="368" rx="10"/>
+  <rect class="bar" x="17" y="17" width="450" height="34" rx="9"/>
+  <circle class="dot" cx="38" cy="34" r="5"/><circle class="dot" cx="56" cy="34" r="5"/><circle class="dot" cx="74" cy="34" r="5"/>
+  <text class="head" x="96" y="39">Without secret-guard</text>
+
+  <text class="mono" x="40" y="88"><tspan class="dim">$</tspan> git clone …/new-project &amp;&amp; cd new-project</text>
+  <text class="mono" x="40" y="114"><tspan class="dim">$</tspan> claude</text>
+  <text class="mono dim" x="40" y="140">  (no hook in this clone)</text>
+  <text class="mono" x="40" y="182"><tspan class="dim">$</tspan> git add .env.local</text>
+  <text class="mono" x="40" y="208"><tspan class="dim">$</tspan> git commit -m "wire up deploy"</text>
+  <text class="mono" x="40" y="234">[main 3f2a1c9] wire up deploy</text>
+  <text class="mono" x="40" y="260"> 1 file changed, 1 insertion(+)</text>
+
+  <rect x="40" y="296" width="404" height="56" rx="8" fill="#f85149" fill-opacity="0.12" stroke="#f85149" stroke-opacity="0.5"/>
+  <text class="mono bad" x="56" y="320">GITHUB_TOKEN=ghp_••••••••••••••••</text>
+  <text class="sub" x="56" y="340">is now in history, and in every push after it</text>
+
+  <!-- Right panel -->
+  <rect class="panel" x="492" y="16" width="452" height="368" rx="10"/>
+  <rect class="bar" x="493" y="17" width="450" height="34" rx="9"/>
+  <circle class="dot" cx="514" cy="34" r="5"/><circle class="dot" cx="532" cy="34" r="5"/><circle class="dot" cx="550" cy="34" r="5"/>
+  <text class="head" x="572" y="39">With secret-guard</text>
+
+  <text class="mono" x="516" y="88"><tspan class="dim">$</tspan> git clone …/new-project &amp;&amp; cd new-project</text>
+  <text class="mono" x="516" y="114"><tspan class="dim">$</tspan> claude</text>
+  <text class="mono" x="516" y="140"><tspan class="accent">secret-guard:</tspan> created .pre-commit-config.yaml</text>
+  <text class="mono" x="516" y="160">  (gitleaks) and ran pre-commit install</text>
+  <text class="mono" x="516" y="200"><tspan class="dim">$</tspan> git commit -m "wire up deploy"</text>
+  <text class="mono" x="516" y="226">gitleaks<tspan class="dim">.................................</tspan><tspan class="bad">Failed</tspan></text>
+  <text class="mono" x="516" y="252">  RuleID: <tspan class="warn">github-pat</tspan>   File: .env.local</text>
+
+  <rect x="516" y="296" width="404" height="56" rx="8" fill="#3fb950" fill-opacity="0.12" stroke="#3fb950" stroke-opacity="0.5"/>
+  <text class="mono ok" x="532" y="320">Commit stopped. Nothing reached history.</text>
+  <text class="sub" x="532" y="340">The secret is redacted in the gitleaks report</text>
+</svg>
