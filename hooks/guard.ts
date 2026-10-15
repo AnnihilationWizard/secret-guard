@@ -1,8 +1,8 @@
 import type { EngineInterface, ProcessRunResult } from 'claude-code'
 
-/** 這個 mod 用到的主機能力；register 由 `$` 建出，測試用記憶體假物件。 */
+/** What the mod needs from the host: built from `$` in register, an in-memory fake in tests. */
 export type Host = {
-  /** undefined：指令無法啟動（未安裝）或逾時。 */
+  /** Resolves undefined when the command cannot start (not installed) or times out. */
   run: (argv: readonly string[], cwd: string, timeoutMs?: number) => Promise<ProcessRunResult | undefined>
   exists: (path: string) => Promise<boolean>
   read: (path: string) => Promise<string>
@@ -40,13 +40,13 @@ const succeeded = (r: ProcessRunResult | undefined): r is ProcessRunResult =>
   r !== undefined && r.exitCode === 0
 
 const failure = (r: ProcessRunResult | undefined): string =>
-  (r === undefined ? '無法執行' : r.stderr || r.stdout || `exit ${r.exitCode}`).trim().slice(0, 300)
+  (r === undefined ? 'could not run' : r.stderr || r.stdout || `exit ${r.exitCode}`).trim().slice(0, 300)
 
 async function readText(host: Host, path: string): Promise<string | undefined> {
   return (await host.exists(path)) ? host.read(path) : undefined
 }
 
-/** gitleaks 8.19 起改用 `gitleaks git`；更舊的版本只有 `protect`。 */
+/** gitleaks 8.19 introduced `gitleaks git`; older releases only have `protect`. */
 export function scanCommand(versionOutput: string): string {
   const m = /(\d+)\.(\d+)/.exec(versionOutput)
   const isLegacy = m !== null && (Number(m[1]) < 8 || (Number(m[1]) === 8 && Number(m[2]) < 19))
@@ -56,7 +56,7 @@ export function scanCommand(versionOutput: string): string {
 }
 
 export function preCommitConfig(scan: string): string {
-  return `${MARK}: 每次 commit 前用全域安裝的 gitleaks 掃描 staged 變更
+  return `${MARK}: scan staged changes with the installed gitleaks before each commit
 repos:
   - repo: local
     hooks:
@@ -69,16 +69,16 @@ repos:
 }
 
 export function huskyBlock(scan: string): string {
-  return `${MARK}: 每次 commit 前掃描 staged 變更中的密鑰
+  return `${MARK}: scan staged changes for secrets before each commit
 if command -v gitleaks >/dev/null 2>&1; then
   ${scan} || exit 1
 else
-  echo "gitleaks 未安裝，略過密鑰掃描（brew install gitleaks）" >&2
+  echo "gitleaks is not installed; skipping the secret scan (brew install gitleaks)" >&2
 fi
 `
 }
 
-/** 把區塊插在既有 hook 的 shebang 之後，確保在其他指令（含 exit）之前執行。 */
+/** Puts the block right after the hook's shebang, so it runs before any other command (an exit included). */
 export function prependBlock(existing: string | undefined, block: string): string {
   if (existing === undefined || existing.trim() === '') return block
   const lines = existing.split('\n')
@@ -92,7 +92,7 @@ type PackageManager = { name: string; add: string[] }
 
 async function packageManager(host: Host, root: string): Promise<PackageManager> {
   if (await host.exists(`${root}/pnpm-lock.yaml`)) {
-    // pnpm 在 workspace 根目錄拒絕 add，除非明確加 -w。
+    // pnpm refuses to add to a workspace root unless -w is given.
     const workspaceRoot = (await host.exists(`${root}/pnpm-workspace.yaml`)) ? ['-w'] : []
     return { name: 'pnpm', add: ['pnpm', 'add', ...workspaceRoot, '-D', 'husky'] }
   }
@@ -111,7 +111,7 @@ async function hooksPathSetting(host: Host, root: string): Promise<string | unde
 
 async function ensurePreCommit(host: Host, root: string, scan: string): Promise<Outcome> {
   if (!succeeded(await host.run(['pre-commit', '--version'], root))) {
-    return { kind: 'skip', reason: 'pre-commit 未安裝' }
+    return { kind: 'skip', reason: 'pre-commit is not installed' }
   }
 
   const configPath = `${root}/.pre-commit-config.yaml`
@@ -119,7 +119,7 @@ async function ensurePreCommit(host: Host, root: string, scan: string): Promise<
   if (config !== undefined && !/gitleaks/.test(config)) {
     return {
       kind: 'warn',
-      message: '已有 .pre-commit-config.yaml 但沒有 gitleaks hook；不自動修改既有設定，請手動加入。',
+      message: '.pre-commit-config.yaml has no gitleaks hook. It was left as it is; add the hook yourself.',
     }
   }
 
@@ -127,7 +127,7 @@ async function ensurePreCommit(host: Host, root: string, scan: string): Promise<
   if (hooksPath !== undefined) {
     return {
       kind: 'warn',
-      message: `core.hooksPath 已設為 ${hooksPath}，pre-commit install 會拒絕執行；未做變更。`,
+      message: `core.hooksPath is set to ${hooksPath}, so pre-commit install would refuse to run. Nothing was changed.`,
     }
   }
 
@@ -140,13 +140,13 @@ async function ensurePreCommit(host: Host, root: string, scan: string): Promise<
 
   const install = await host.run(['pre-commit', 'install'], root, 60_000)
   if (!succeeded(install)) {
-    return { kind: 'warn', message: `pre-commit install 失敗：${failure(install)}` }
+    return { kind: 'warn', message: `pre-commit install failed: ${failure(install)}` }
   }
   return {
     kind: 'added',
     message: config === undefined
-      ? '已建立 .pre-commit-config.yaml（gitleaks）並執行 pre-commit install。'
-      : '已執行 pre-commit install，gitleaks hook 生效。',
+      ? 'Created .pre-commit-config.yaml (gitleaks) and ran pre-commit install.'
+      : 'Ran pre-commit install. The gitleaks hook is active.',
   }
 }
 
@@ -165,14 +165,17 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
   if (hook !== undefined && /gitleaks/.test(hook)) {
     return isHuskyActive
       ? { kind: 'ok' }
-      : { kind: 'warn', message: '.husky/pre-commit 已有 gitleaks，但 husky 尚未啟用；請先執行專案的 install（會跑 prepare script）。' }
+      : {
+          kind: 'warn',
+          message: '.husky/pre-commit already runs gitleaks, but Husky is not active. Run the project install, which runs the prepare script.',
+        }
   }
 
   let pkg: PackageJson
   try {
     pkg = JSON.parse(await host.read(`${root}/package.json`)) as PackageJson
   } catch {
-    return { kind: 'warn', message: 'package.json 無法解析；未做變更。' }
+    return { kind: 'warn', message: 'package.json could not be parsed. Nothing was changed.' }
   }
 
   const pm = await packageManager(host, root)
@@ -181,18 +184,18 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
     if (!options.autoInstallHusky) {
       return {
         kind: 'warn',
-        message: `JS/TS 專案尚未安裝 husky。請執行 \`${pm.add.join(' ')}\`，或在設定中開啟 secret-guard 的「自動安裝 Husky」。`,
+        message: `This JS/TS project has no Husky. Run \`${pm.add.join(' ')}\`, or turn on secret-guard's Auto-install Husky option.`,
       }
     }
     const added = await host.run(pm.add, root, 600_000)
     if (!succeeded(added)) {
-      return { kind: 'warn', message: `安裝 husky 失敗（${pm.name}）：${failure(added)}` }
+      return { kind: 'warn', message: `Installing Husky with ${pm.name} failed: ${failure(added)}` }
     }
   }
 
   const prepare = pkg.scripts?.prepare
   if (prepare === undefined) {
-    // `|| true`：只裝正式依賴（npm ci --omit=dev、Docker）時沒有 husky，prepare 不能讓安裝失敗。
+    // `|| true`: installs without dev dependencies (npm ci --omit=dev, Docker) have no husky, and prepare must not fail them.
     await host.run(['npm', 'pkg', 'set', `scripts.prepare=${PREPARE_SCRIPT}`], root)
   }
 
@@ -203,27 +206,28 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
     if (!succeeded(activated)) {
       return {
         kind: 'warn',
-        message: '已寫入 .husky/pre-commit，但無法啟用 husky（node_modules 尚未安裝？）；請執行專案的 install。',
+        message: 'Wrote .husky/pre-commit, but could not turn Husky on (are node_modules installed?). Run the project install.',
       }
     }
   }
 
   const notes = [
-    hasHusky ? undefined : `已用 ${pm.name} 安裝 husky`,
+    hasHusky ? undefined : `Installed Husky with ${pm.name}`,
     prepare === undefined
-      ? '已加入 prepare script'
-      : /husky/.test(prepare) ? undefined : `prepare script 沒有呼叫 husky（${prepare}），隊友 clone 後需手動啟用`,
-    '已將 gitleaks 加入 .husky/pre-commit',
+      ? 'added a prepare script'
+      : /husky/.test(prepare) ? undefined : `the prepare script does not run husky (${prepare}), so teammates must turn it on after cloning`,
+    'added gitleaks to .husky/pre-commit',
   ].filter((n): n is string => n !== undefined)
-  return { kind: 'added', message: `${notes.join('；')}。` }
+  const sentence = notes.join('; ')
+  return { kind: 'added', message: `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.` }
 }
 
 export async function ensureGuard(host: Host, cwd: string, options: GuardOptions): Promise<Outcome> {
   const gitleaks = await host.run(['gitleaks', 'version'], cwd)
-  if (!succeeded(gitleaks)) return { kind: 'skip', reason: 'gitleaks 未安裝' }
+  if (!succeeded(gitleaks)) return { kind: 'skip', reason: 'gitleaks is not installed' }
 
   const top = await host.run(['git', 'rev-parse', '--show-toplevel'], cwd)
-  if (!succeeded(top)) return { kind: 'skip', reason: '不是 Git 專案' }
+  if (!succeeded(top)) return { kind: 'skip', reason: 'not a Git repository' }
   const root = top.stdout.trim()
 
   const scan = scanCommand(gitleaks.stdout)

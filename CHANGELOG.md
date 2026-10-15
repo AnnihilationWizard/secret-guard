@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.1] - 2026-10-15
+
+- Notices are now in English, such as `Created .pre-commit-config.yaml (gitleaks) and ran pre-commit install.`
+- The comment line in a generated `.pre-commit-config.yaml` and the `.husky/pre-commit` step, including its warning when gitleaks is missing, are now in English.
+- A test checks that every notice and generated file is in English.
+
 ## [1.0.0] - 2026-10-15
 
 Initial release of secret-guard by AnnihilationWizard.
@@ -17,4 +23,5 @@ Initial release of secret-guard by AnnihilationWizard.
 
 Built on Claude Code's early-access function-hooks mod API.
 
+[1.0.1]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.1
 [1.0.0]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.0

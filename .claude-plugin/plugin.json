@@ -1,6 +1,6 @@
 {
   "name": "secret-guard",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Add a gitleaks pre-commit hook to each Git project you open in Claude Code: pre-commit for most projects, Husky for JS/TS",
   "author": {
     "name": "AnnihilationWizard",

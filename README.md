@@ -6,11 +6,11 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.0.0-green.svg" alt="Version 1.0.0"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.0.1-green.svg" alt="Version 1.0.1"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/Platform-Claude%20Code-D97757.svg" alt="Platform: Claude Code"></a>
   <a href="hooks/register.ts"><img src="https://img.shields.io/badge/Type-Function%20hooks%20mod-6E7681.svg" alt="Function hooks mod"></a>
-  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-14%20passing-3FB950.svg" alt="14 tests passing"></a>
+  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-15%20passing-3FB950.svg" alt="15 tests passing"></a>
 </p>
 
 <p align="center">
@@ -142,7 +142,6 @@ In a pnpm workspace root, secret-guard installs with `pnpm add -w`.
 - Teammates need `gitleaks` too. With the pre-commit config, a commit fails when `gitleaks` is missing. The Husky step prints a warning and lets the commit through.
 - Husky sets `core.hooksPath`, so hooks in `.git/hooks` stop running in that project.
 - Yarn Plug'n'Play projects have no `node_modules/.bin/husky`. secret-guard writes the hook and asks you to turn Husky on.
-- Notices are shown in Traditional Chinese.
 - The `/plugin install` command is available in terminal sessions only. A user-scope install also loads in the desktop app's Code tab.
 
 ## Development
