@@ -1,8 +1,9 @@
 import { test, expect } from 'claude-code/testing'
 import type { ProcessRunResult } from 'claude-code'
-import { ensureGuard, huskyBlock, preCommitConfig, prependBlock, scanCommand, type Host, type Outcome } from '../hooks/guard.ts'
+import { configuredHooksPath, ensureGuard, huskyBlock, preCommitConfig, prependBlock, scanCommand, type Host, type Outcome } from '../hooks/guard.ts'
 
 const ROOT = '/repo'
+const ENGINE_HOOKS_PATH = 'command\t/dev/null\ncommand\t/dev/null\n'
 
 type Fake = {
   files: Record<string, string>
@@ -39,7 +40,8 @@ const base = (): Fake => ({
     'gitleaks version': { stdout: '8.21.2\n' },
     'git rev-parse --show-toplevel': { stdout: `${ROOT}\n` },
     'pre-commit --version': { stdout: 'pre-commit 4.0.1\n' },
-    'git config --get core.hooksPath': { exitCode: 1 },
+    // What Claude Code reports for a mod's git: its own -c core.hooksPath=/dev/null, scope "command".
+    'git config --show-scope --get-all core.hooksPath': { stdout: ENGINE_HOOKS_PATH },
     'git rev-parse --path-format=absolute --git-path hooks/pre-commit': { stdout: `${ROOT}/.git/hooks/pre-commit\n` },
     'pre-commit install': { stdout: 'pre-commit installed at .git/hooks/pre-commit\n' },
   },
@@ -164,9 +166,37 @@ test('leaves a JS project alone when its hook runs gitleaks and Husky is active'
   const fake = base()
   fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^9.1.0"}}'
   fake.files[`${ROOT}/.husky/pre-commit`] = 'gitleaks git --pre-commit --staged\n'
-  fake.commands['git config --get core.hooksPath'] = { stdout: '.husky/_\n' }
+  fake.commands['git config --show-scope --get-all core.hooksPath'] = { stdout: `${ENGINE_HOOKS_PATH}local\t.husky/_\n` }
   const host = fakeHost(fake)
   expect(await ensureGuard(host, ROOT, { autoInstallHusky: false })).toEqual({ kind: 'ok' })
+})
+
+test("ignores Claude Code's own core.hooksPath=/dev/null and still sets up the project", async () => {
+  const fake = base()
+  const host = fakeHost(fake)
+  const outcome = await ensureGuard(host, ROOT, { autoInstallHusky: false })
+  expect(outcome.kind).toBe('added')
+  expect(outcome.kind === 'added' && outcome.message).not.toContain('core.hooksPath')
+  expect(fake.ran).toContain('pre-commit install')
+})
+
+test('still warns when a config file sets core.hooksPath', async () => {
+  const fake = base()
+  fake.commands['git config --show-scope --get-all core.hooksPath'] = { stdout: `${ENGINE_HOOKS_PATH}global\t~/.githooks\n` }
+  const host = fakeHost(fake)
+  const outcome = await ensureGuard(host, ROOT, { autoInstallHusky: false })
+  expect(outcome).toEqual({
+    kind: 'warn',
+    message: 'core.hooksPath is set to ~/.githooks, so pre-commit install would refuse to run. Nothing was changed.',
+  })
+  expect(fake.ran).not.toContain('pre-commit install')
+})
+
+test('configuredHooksPath reads only config-file scopes', () => {
+  expect(configuredHooksPath('command\t/dev/null\ncommand\t/dev/null\n')).toBeUndefined()
+  expect(configuredHooksPath('global\t~/.githooks\ncommand\t/dev/null\n')).toBe('~/.githooks')
+  expect(configuredHooksPath('global\t~/.githooks\nlocal\t.husky/_\n')).toBe('.husky/_')
+  expect(configuredHooksPath('')).toBeUndefined()
 })
 
 test('every notice and generated file is in English', async () => {
@@ -177,7 +207,10 @@ test('every notice and generated file is in English', async () => {
     { setup: f => { f.commands['git rev-parse --show-toplevel'] = { exitCode: 128 } }, autoInstallHusky: false },
     { setup: f => { delete f.commands['pre-commit --version'] }, autoInstallHusky: false },
     { setup: f => { f.files[`${ROOT}/.pre-commit-config.yaml`] = 'repos: []\n' }, autoInstallHusky: false },
-    { setup: f => { f.commands['git config --get core.hooksPath'] = { stdout: '.githooks\n' } }, autoInstallHusky: false },
+    {
+      setup: f => { f.commands['git config --show-scope --get-all core.hooksPath'] = { stdout: 'local\t.githooks\n' } },
+      autoInstallHusky: false,
+    },
     { setup: f => { f.commands['pre-commit install'] = { exitCode: 1, stderr: 'boom' } }, autoInstallHusky: false },
     { setup: f => { f.files[`${ROOT}/package.json`] = '{not json' }, autoInstallHusky: false },
     { setup: f => { f.files[`${ROOT}/package.json`] = '{}' }, autoInstallHusky: false },

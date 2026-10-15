@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.2] - 2026-10-16
+
+- Fixed: projects without a `package.json` were never set up, and showed `core.hooksPath is set to /dev/null`. Claude Code runs a mod's git with `-c core.hooksPath=/dev/null`; secret-guard now reads `core.hooksPath` only from the project's local, global and system config files.
+- Fixed: a JS/TS project whose hook already ran gitleaks was reported as having Husky off for the same reason.
+- Fixed: notices no longer repeat the mod's name (`secret-guard: secret-guard: …`), since Claude Code already heads each toast with it.
+
 ## [1.0.1] - 2026-10-15
 
 - Notices are now in English, such as `Created .pre-commit-config.yaml (gitleaks) and ran pre-commit install.`
@@ -23,5 +29,6 @@ Initial release of secret-guard by AnnihilationWizard.
 
 Built on Claude Code's early-access function-hooks mod API.
 
+[1.0.2]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.2
 [1.0.1]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.1
 [1.0.0]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.0

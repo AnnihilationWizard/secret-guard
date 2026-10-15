@@ -103,10 +103,27 @@ async function packageManager(host: Host, root: string): Promise<PackageManager>
   return { name: 'npm', add: ['npm', 'install', '--save-dev', 'husky'] }
 }
 
+/**
+ * The core.hooksPath set in the project's own config files (local, worktree, global, system), from
+ * `git config --show-scope --get-all` output. Claude Code runs a mod's git with
+ * `-c core.hooksPath=/dev/null`, which shows up with the `command` scope and applies only to that
+ * one call, so it is ignored.
+ */
+export function configuredHooksPath(showScopeOutput: string): string | undefined {
+  let found: string | undefined
+  for (const line of showScopeOutput.split('\n')) {
+    const tab = line.indexOf('\t')
+    if (tab < 0) continue
+    const scope = line.slice(0, tab)
+    const value = line.slice(tab + 1).trim()
+    if (scope !== 'command' && value !== '') found = value
+  }
+  return found
+}
+
 async function hooksPathSetting(host: Host, root: string): Promise<string | undefined> {
-  const r = await host.run(['git', 'config', '--get', 'core.hooksPath'], root)
-  const value = r?.stdout.trim()
-  return succeeded(r) && value ? value : undefined
+  const r = await host.run(['git', 'config', '--show-scope', '--get-all', 'core.hooksPath'], root)
+  return succeeded(r) ? configuredHooksPath(r.stdout) : undefined
 }
 
 async function ensurePreCommit(host: Host, root: string, scan: string): Promise<Outcome> {
