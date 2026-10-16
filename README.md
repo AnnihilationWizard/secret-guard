@@ -6,11 +6,11 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.0.2-green.svg" alt="Version 1.0.2"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.0.3-green.svg" alt="Version 1.0.3"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/Platform-Claude%20Code-D97757.svg" alt="Platform: Claude Code"></a>
   <a href="hooks/register.ts"><img src="https://img.shields.io/badge/Type-Function%20hooks%20mod-6E7681.svg" alt="Function hooks mod"></a>
-  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-18%20passing-3FB950.svg" alt="18 tests passing"></a>
+  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-22%20passing-3FB950.svg" alt="22 tests passing"></a>
 </p>
 
 <p align="center">
@@ -31,7 +31,7 @@ Installing `gitleaks` and `pre-commit` on your machine does not protect a reposi
 
 | | |
 | --- | --- |
-| **Runs** | Once per session, in the background after Claude Code starts |
+| **Runs** | When a session starts, and when Claude enters a worktree |
 | **Needs** | `gitleaks`, plus `pre-commit` for projects without a `package.json` |
 | **Writes** | `.pre-commit-config.yaml`, or `.husky/pre-commit` in JS/TS projects |
 | **Never** | Rewrites an existing config, or adds dependencies unless you opt in |
@@ -44,6 +44,7 @@ Installing `gitleaks` and `pre-commit` on your machine does not protect a reposi
 - **Set up once per project:** A project that already has a gitleaks hook is left alone, and the check never delays your first prompt.
 - **pre-commit for most projects:** Writes a `.pre-commit-config.yaml` that runs your installed `gitleaks`, then runs `pre-commit install`.
 - **Husky for JS/TS:** Puts the gitleaks step at the top of `.husky/pre-commit`, ahead of existing commands, and turns Husky on.
+- **Worktrees work too:** A worktree shares the repository's installed hook but not an uncommitted config, so its commits would be blocked. secret-guard adds the config there, and reminds you to commit it so every worktree and clone has it.
 - **Respects your setup:** An existing `.pre-commit-config.yaml` without gitleaks, or a `core.hooksPath` set by another tool, gets a notice instead of a change.
 - **No surprise dependencies:** Husky is added to `package.json` only when you turn on `autoInstallHusky`.
 - **Safe defaults for builds:** A `prepare` script added by secret-guard is `husky || true`, so installs without dev dependencies do not fail.
@@ -53,6 +54,8 @@ Installing `gitleaks` and `pre-commit` on your machine does not protect a reposi
 | Not a Git repository, or `gitleaks` not installed | Nothing |
 | No `package.json` and no `.pre-commit-config.yaml` | Creates the config and runs `pre-commit install` |
 | `.pre-commit-config.yaml` with gitleaks, hook not installed | Runs `pre-commit install` |
+| Hook installed but no `.pre-commit-config.yaml`, as in a new worktree | Creates the config, so commits are no longer blocked |
+| Set up, but the config or `.husky/pre-commit` is not committed | Shows a notice with the `git add` command |
 | `.pre-commit-config.yaml` without gitleaks | Shows a notice and leaves the file as it is |
 | `package.json` with Husky as a dependency | Adds gitleaks to `.husky/pre-commit` and turns Husky on |
 | `package.json` without Husky | Shows the install command, or installs Husky when `autoInstallHusky` is on |
@@ -139,6 +142,7 @@ In a pnpm workspace root, secret-guard installs with `pnpm add -w`.
 ### Limitations
 
 - secret-guard sets up every Git project you open, including repositories you cloned only to read. Each project is set up once, and a notice names the change.
+- A worktree is checked when a session starts in it or Claude enters it with EnterWorktree. Moving into one with a shell `cd` is not detected; commit the config once and every worktree has it.
 - Teammates need `gitleaks` too. With the pre-commit config, a commit fails when `gitleaks` is missing. The Husky step prints a warning and lets the commit through.
 - Husky sets `core.hooksPath`, so hooks in `.git/hooks` stop running in that project.
 - Yarn Plug'n'Play projects have no `node_modules/.bin/husky`. secret-guard writes the hook and asks you to turn Husky on.

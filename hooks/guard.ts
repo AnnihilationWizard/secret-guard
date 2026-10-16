@@ -21,6 +21,18 @@ const MARK = '# secret-guard'
 
 export const PREPARE_SCRIPT = 'husky || true'
 
+const PRE_COMMIT_CONFIG = '.pre-commit-config.yaml'
+const HUSKY_HOOK = '.husky/pre-commit'
+
+/** Whether `path` (relative to the repository root) is committed or staged. */
+async function isTracked(host: Host, root: string, path: string): Promise<boolean> {
+  return succeeded(await host.run(['git', 'ls-files', '--error-unmatch', '--', path], root))
+}
+
+/** An uncommitted hook file exists only in this folder: other worktrees and fresh clones lack it. */
+const commitHint = (path: string): string =>
+  ` Commit ${path} so other worktrees and clones get it: git add ${path} && git commit`
+
 export function hostFrom($: EngineInterface): Host {
   return {
     run: async (argv, cwd, timeoutMs = 30_000) => {
@@ -148,23 +160,31 @@ async function ensurePreCommit(host: Host, root: string, scan: string): Promise<
     }
   }
 
+  // The hook lives in the repository's shared hooks folder, so a worktree or clone can have it without the config.
   const hookFile = await host.run(['git', 'rev-parse', '--path-format=absolute', '--git-path', 'hooks/pre-commit'], root)
   const installed = succeeded(hookFile) ? await readText(host, hookFile.stdout.trim()) : undefined
   const isInstalled = installed !== undefined && /pre-commit/.test(installed)
-  if (config !== undefined && isInstalled) return { kind: 'ok' }
+  if (config !== undefined && isInstalled) {
+    return (await isTracked(host, root, PRE_COMMIT_CONFIG))
+      ? { kind: 'ok' }
+      : { kind: 'warn', message: `${PRE_COMMIT_CONFIG} is not committed.${commitHint(PRE_COMMIT_CONFIG)}` }
+  }
 
   if (config === undefined) await host.write(configPath, preCommitConfig(scan))
 
-  const install = await host.run(['pre-commit', 'install'], root, 60_000)
-  if (!succeeded(install)) {
-    return { kind: 'warn', message: `pre-commit install failed: ${failure(install)}` }
+  if (!isInstalled) {
+    const install = await host.run(['pre-commit', 'install'], root, 60_000)
+    if (!succeeded(install)) {
+      return { kind: 'warn', message: `pre-commit install failed: ${failure(install)}` }
+    }
   }
-  return {
-    kind: 'added',
-    message: config === undefined
-      ? 'Created .pre-commit-config.yaml (gitleaks) and ran pre-commit install.'
-      : 'Ran pre-commit install. The gitleaks hook is active.',
-  }
+  const done = config !== undefined
+    ? 'Ran pre-commit install. The gitleaks hook is active.'
+    : isInstalled
+      ? `The pre-commit hook was installed but ${PRE_COMMIT_CONFIG} was missing, so commits were blocked. Created it with gitleaks.`
+      : `Created ${PRE_COMMIT_CONFIG} (gitleaks) and ran pre-commit install.`
+  const hint = (await isTracked(host, root, PRE_COMMIT_CONFIG)) ? '' : commitHint(PRE_COMMIT_CONFIG)
+  return { kind: 'added', message: `${done}${hint}` }
 }
 
 type PackageJson = {
@@ -180,9 +200,12 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
   const isHuskyActive = hooksPath !== undefined && /\.husky/.test(hooksPath)
 
   if (hook !== undefined && /gitleaks/.test(hook)) {
-    return isHuskyActive
-      ? { kind: 'ok' }
-      : {
+    if (isHuskyActive) {
+      return (await isTracked(host, root, HUSKY_HOOK))
+        ? { kind: 'ok' }
+        : { kind: 'warn', message: `${HUSKY_HOOK} is not committed.${commitHint(HUSKY_HOOK)}` }
+    }
+    return {
           kind: 'warn',
           message: '.husky/pre-commit already runs gitleaks, but Husky is not active. Run the project install, which runs the prepare script.',
         }
@@ -236,16 +259,22 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
     'added gitleaks to .husky/pre-commit',
   ].filter((n): n is string => n !== undefined)
   const sentence = notes.join('; ')
-  return { kind: 'added', message: `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.` }
+  const hint = (await isTracked(host, root, HUSKY_HOOK)) ? '' : commitHint(HUSKY_HOOK)
+  return { kind: 'added', message: `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.${hint}` }
+}
+
+/** The repository root for `cwd`, or undefined outside a Git repository. */
+export async function projectRoot(host: Host, cwd: string): Promise<string | undefined> {
+  const top = await host.run(['git', 'rev-parse', '--show-toplevel'], cwd)
+  return succeeded(top) ? top.stdout.trim() : undefined
 }
 
 export async function ensureGuard(host: Host, cwd: string, options: GuardOptions): Promise<Outcome> {
   const gitleaks = await host.run(['gitleaks', 'version'], cwd)
   if (!succeeded(gitleaks)) return { kind: 'skip', reason: 'gitleaks is not installed' }
 
-  const top = await host.run(['git', 'rev-parse', '--show-toplevel'], cwd)
-  if (!succeeded(top)) return { kind: 'skip', reason: 'not a Git repository' }
-  const root = top.stdout.trim()
+  const root = await projectRoot(host, cwd)
+  if (root === undefined) return { kind: 'skip', reason: 'not a Git repository' }
 
   const scan = scanCommand(gitleaks.stdout)
   return (await host.exists(`${root}/package.json`))

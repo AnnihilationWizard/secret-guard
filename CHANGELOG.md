@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3] - 2026-10-16
+
+- Fixed: in a worktree, commits were blocked with `No .pre-commit-config.yaml file was found`. A worktree shares the repository's installed hook but not an uncommitted config; secret-guard now creates the config when the hook is installed and the config is missing.
+- When Claude enters a worktree with the EnterWorktree tool, secret-guard checks that worktree before the tool result goes back, so the config is in place before work starts.
+- A notice reminds you to commit `.pre-commit-config.yaml` or `.husky/pre-commit` when it is set up but not committed, with the `git add` command.
+- Each repository is checked once per session.
+
 ## [1.0.2] - 2026-10-16
 
 - Fixed: projects without a `package.json` were never set up, and showed `core.hooksPath is set to /dev/null`. Claude Code runs a mod's git with `-c core.hooksPath=/dev/null`; secret-guard now reads `core.hooksPath` only from the project's local, global and system config files.
@@ -29,6 +36,7 @@ Initial release of secret-guard by AnnihilationWizard.
 
 Built on Claude Code's early-access function-hooks mod API.
 
+[1.0.3]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.3
 [1.0.2]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.2
 [1.0.1]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.1
 [1.0.0]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.0
