@@ -6,11 +6,11 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.1.3-green.svg" alt="Version 1.1.3"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.1.4-green.svg" alt="Version 1.1.4"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/Platform-Claude%20Code-D97757.svg" alt="Platform: Claude Code"></a>
   <a href="hooks/register.ts"><img src="https://img.shields.io/badge/Type-Function%20hooks%20mod-6E7681.svg" alt="Function hooks mod"></a>
-  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-51%20passing-3FB950.svg" alt="51 tests passing"></a>
+  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-54%20passing-3FB950.svg" alt="54 tests passing"></a>
 </p>
 
 <p align="center">
@@ -113,7 +113,7 @@ Start Claude Code in a Git project. If the project has no gitleaks hook, a notic
 | --- | --- |
 | `/secret-guard-use lefthook` | Use Lefthook from now on and switch this project if secret-guard set it up with pre-commit |
 | `/secret-guard-use pre-commit` | The same, the other way round |
-| `/secret-guard-use <manager> --remove-other` | Also uninstall the other manager: with Homebrew when it was installed that way, otherwise it says how |
+| `/secret-guard-use <manager> --remove-other` | Also uninstall the other manager: with Homebrew on macOS and Linux when it was installed that way, otherwise it says how (uv, pipx, pip, npm, Scoop or winget) |
 
 Without `--remove-other`, nothing is uninstalled: the command first says which repositories could be affected, so you can switch them before removing anything.
 

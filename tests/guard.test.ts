@@ -5,6 +5,7 @@ import {
   configuredHooksPath,
   ensureGuard,
   huskyBlock,
+  isWindows,
   lefthookConfig,
   locateProject,
   parseUseArgs,
@@ -592,6 +593,30 @@ test('removeManager leaves a non-Homebrew install in place and says how to remov
 test('removeManager does nothing when the manager is not installed', async () => {
   const fake = lefthookOnly()
   expect(await removeManager(fakeHost(fake), 'pre-commit')).toBe('pre-commit is not installed, so there is nothing to remove.')
+})
+
+test('removeManager lists uv among the ways to remove a non-Homebrew pre-commit', async () => {
+  const fake = bothInstalled()
+  fake.commands['brew list --versions pre-commit'] = { exitCode: 1 }
+  const text = await removeManager(fakeHost(fake), 'pre-commit')
+  expect(text).toContain('uv tool uninstall pre-commit')
+  expect(text.indexOf('brew uninstall pre-commit')).toBeLessThan(text.indexOf('uv tool uninstall'))
+})
+
+test('on Windows removeManager never calls brew and lists Windows ways first', async () => {
+  const fake = bothInstalled()
+  const host = { ...fakeHost(fake), toolDir: 'C:\\Users\\dev\\.claude\\plugins\\secret-guard' }
+  expect(isWindows(host)).toBe(true)
+  const preCommit = await removeManager(host, 'pre-commit')
+  expect(preCommit).toContain('Remove it with one of: uv tool uninstall pre-commit')
+  expect(preCommit).not.toContain('brew')
+  const lefthook = await removeManager(host, 'lefthook')
+  expect(lefthook).toContain('Remove it with one of: scoop uninstall lefthook')
+  expect(fake.ran.some(c => c.startsWith('brew'))).toBe(false)
+})
+
+test('isWindows is false for a POSIX mod folder', () => {
+  expect(isWindows(fakeHost(base()))).toBe(false)
 })
 
 test('removalWarning asks for confirmation before anything is removed', () => {

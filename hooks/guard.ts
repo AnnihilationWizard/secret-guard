@@ -566,10 +566,20 @@ export async function ensureGuard(host: Host, cwd: string, options: GuardOptions
 export const BOTH_INSTALLED =
   'Both pre-commit and Lefthook are installed. Pick one hook manager with /secret-guard-use pre-commit or /secret-guard-use lefthook; secret-guard can then help remove the other.'
 
-const REMOVE_BY_HAND: Record<Manager, string> = {
-  'pre-commit': 'brew uninstall pre-commit, pipx uninstall pre-commit or pip uninstall pre-commit',
-  lefthook: 'brew uninstall lefthook, npm uninstall -g lefthook, scoop uninstall lefthook or winget uninstall evilmartians.lefthook',
+/** How each manager is removed by hand, listed for the platform first: Homebrew does not exist on Windows. */
+const REMOVE_BY_HAND: Record<'unix' | 'windows', Record<Manager, string>> = {
+  unix: {
+    'pre-commit': 'brew uninstall pre-commit, uv tool uninstall pre-commit, pipx uninstall pre-commit or pip uninstall pre-commit',
+    lefthook: 'brew uninstall lefthook or npm uninstall -g lefthook',
+  },
+  windows: {
+    'pre-commit': 'uv tool uninstall pre-commit, pipx uninstall pre-commit or pip uninstall pre-commit',
+    lefthook: 'scoop uninstall lefthook, winget uninstall evilmartians.lefthook or npm uninstall -g lefthook',
+  },
 }
+
+/** Whether the mod runs on Windows, told from its own folder's path (a drive letter, or backslashes). */
+export const isWindows = (host: Host): boolean => /^[A-Za-z]:[\\/]/.test(host.toolDir) || host.toolDir.includes('\\')
 
 export const other = (manager: Manager): Manager => (manager === 'lefthook' ? 'pre-commit' : 'lefthook')
 
@@ -591,9 +601,12 @@ export const USE_USAGE =
 export async function removeManager(host: Host, manager: Manager): Promise<string> {
   if (!(await isInstalled(host, manager))) return `${manager} is not installed, so there is nothing to remove.`
   const cwd = host.toolDir
+  if (isWindows(host)) {
+    return `${manager} was left in place: on Windows secret-guard does not uninstall tools itself. Remove it with one of: ${REMOVE_BY_HAND.windows[manager]}.`
+  }
   const brew = await host.run(['brew', 'list', '--versions', manager], cwd)
   if (!succeeded(brew) || brew.stdout.trim() === '') {
-    return `${manager} was not installed with Homebrew, so it was left in place. Remove it with one of: ${REMOVE_BY_HAND[manager]}.`
+    return `${manager} was not installed with Homebrew, so it was left in place. Remove it with one of: ${REMOVE_BY_HAND.unix[manager]}.`
   }
   const removed = await host.run(['brew', 'uninstall', manager], cwd, 300_000)
   return succeeded(removed)

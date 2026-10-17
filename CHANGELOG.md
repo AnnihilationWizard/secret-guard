@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.4] - 2026-10-17
+
+- `/secret-guard-use --remove-other` lists `uv tool uninstall pre-commit` among the ways to remove pre-commit by hand. On Windows it never calls Homebrew and lists uv, pipx and pip, or Scoop, winget and npm, first.
+- Fixed: the `/secret-guard-use` output read `secret-guard: secret-guard now sets up …`; Claude Code already heads it with the mod's name.
+- Fixed: running `/secret-guard-use` right after a session started could show a stale notice from the session's own check, which ran at the same time. Checks and the command now run one at a time, and a check overtaken by a pick drops its notice.
+
 ## [1.1.3] - 2026-10-17
 
 - Fixed: on Windows, projects set up with pre-commit or Lefthook were not protected; the check stopped with only "The check failed". The installed hook was looked up with `git rev-parse --git-path hooks/pre-commit`, which follows the `core.hooksPath` Claude Code sets to the null device for a mod's git, and so named `\\.\NUL\pre-commit`, a path Claude Code refuses. secret-guard now finds the hook from `--git-common-dir`, which ignores that override and points worktrees at the shared `.git`.
@@ -62,6 +68,7 @@ Initial release of secret-guard by AnnihilationWizard.
 
 Built on Claude Code's early-access function-hooks mod API.
 
+[1.1.4]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.4
 [1.1.3]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.3
 [1.1.2]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.2
 [1.1.1]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.1
