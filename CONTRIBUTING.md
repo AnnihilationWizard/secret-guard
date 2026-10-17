@@ -7,8 +7,8 @@ Thank you for helping improve secret-guard. It is a small Claude Code mod writte
 Use the [issue tracker](https://github.com/AnnihilationWizard/secret-guard/issues). Include:
 
 - The secret-guard version, Claude Code version (`claude --version`) and operating system.
-- The versions of `gitleaks` and `pre-commit`, and the package manager for JS/TS projects.
-- The kind of project: plain Git repository, JS/TS with or without Husky, pnpm workspace, Yarn Plug'n'Play.
+- The versions of `gitleaks`, `pre-commit` and `lefthook` you have installed, and the package manager for JS/TS projects.
+- The kind of project: plain Git repository, pre-commit or Lefthook config, JS/TS with or without Husky, pnpm workspace, Yarn Plug'n'Play.
 - The notice secret-guard showed and what you expected it to do.
 - Any transcript line that names `secret-guard`.
 

@@ -29,7 +29,8 @@ Include the notice secret-guard showed and any transcript line that names `secre
 - secret-guard version:
 - Claude Code version (`claude --version`):
 - gitleaks version (`gitleaks version`):
-- pre-commit version (`pre-commit --version`):
+- pre-commit version (`pre-commit --version`), if installed:
+- Lefthook version (`lefthook version`), if installed:
 - Package manager, for JS/TS projects:
 - Operating system:
 
