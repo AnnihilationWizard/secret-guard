@@ -7,6 +7,12 @@ export type Host = {
   exists: (path: string) => Promise<boolean>
   read: (path: string) => Promise<string>
   write: (path: string, text: string) => Promise<void>
+  /**
+   * A short folder of the mod's own to check tools from. Run from a project folder, a tool can
+   * fail to start for reasons of that folder (a Windows path past 260 characters), which must not
+   * read as the tool missing.
+   */
+  toolDir: string
 }
 
 export type Outcome =
@@ -60,6 +66,7 @@ export function hostFrom($: EngineInterface): Host {
     exists: path => $.fs.exists(path),
     read: async path => (await $.fs.read(path)) as string,
     write: (path, text) => $.fs.write(path, text),
+    toolDir: $.plugin.root,
   }
 }
 
@@ -73,10 +80,26 @@ async function readText(host: Host, path: string): Promise<string | undefined> {
   return (await host.exists(path)) ? host.read(path) : undefined
 }
 
-/** Whether a hook manager's command is installed and runs. */
-export async function isInstalled(host: Host, manager: Manager, cwd: string): Promise<boolean> {
-  return succeeded(await host.run(manager === 'lefthook' ? ['lefthook', 'version'] : ['pre-commit', '--version'], cwd))
+/** Whether a hook manager's command is installed and runs, checked from the mod's own folder. */
+export async function isInstalled(host: Host, manager: Manager): Promise<boolean> {
+  return succeeded(await host.run(manager === 'lefthook' ? ['lefthook', 'version'] : ['pre-commit', '--version'], host.toolDir))
 }
+
+/** Where `cwd` stands: in a repository, outside any, or in a folder where commands cannot start. */
+export type Location = { kind: 'repo'; root: string } | { kind: 'none' } | { kind: 'unreachable' }
+
+export async function locateProject(host: Host, cwd: string): Promise<Location> {
+  const top = await host.run(['git', 'rev-parse', '--show-toplevel'], cwd)
+  if (top === undefined) {
+    // git could not start here: either it is missing, or this folder stops it starting.
+    const git = await host.run(['git', '--version'], host.toolDir)
+    return succeeded(git) ? { kind: 'unreachable' } : { kind: 'none' }
+  }
+  return top.exitCode === 0 ? { kind: 'repo', root: top.stdout.trim() } : { kind: 'none' }
+}
+
+export const UNREACHABLE =
+  'secret-guard could not run commands in this folder, so this project is not protected. On Windows this happens when the folder path is longer than about 260 characters; move the project to a shorter path.'
 
 /** gitleaks 8.19 introduced `gitleaks git`; older releases only have `protect`. */
 export function scanCommand(versionOutput: string): string {
@@ -177,7 +200,7 @@ const isPreCommitHook = (hook: string | undefined): boolean => hook !== undefine
 const isLefthookHook = (hook: string | undefined): boolean => hook !== undefined && /lefthook/.test(hook)
 
 async function ensurePreCommit(host: Host, root: string, scan: string): Promise<Outcome> {
-  if (!(await isInstalled(host, 'pre-commit', root))) {
+  if (!(await isInstalled(host, 'pre-commit'))) {
     return { kind: 'skip', reason: 'pre-commit is not installed' }
   }
 
@@ -223,7 +246,7 @@ async function ensurePreCommit(host: Host, root: string, scan: string): Promise<
 }
 
 async function ensureLefthook(host: Host, root: string, scan: string, existing: string | undefined): Promise<Outcome> {
-  if (!(await isInstalled(host, 'lefthook', root))) {
+  if (!(await isInstalled(host, 'lefthook'))) {
     return existing === undefined
       ? { kind: 'skip', reason: 'lefthook is not installed' }
       : {
@@ -330,7 +353,8 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
   await host.write(hookPath, prependBlock(hook, huskyBlock(scan)))
 
   if (!isHuskyActive) {
-    const activated = await host.run([`${root}/node_modules/.bin/husky`], root)
+    const huskyBin = await huskyEntry(host, root)
+    const activated = huskyBin === undefined ? undefined : await host.run(['node', huskyBin], root)
     if (!succeeded(activated)) {
       return {
         kind: 'warn',
@@ -369,10 +393,21 @@ async function findLefthookConfig(host: Host, root: string): Promise<string | un
   return undefined
 }
 
-/** The repository root for `cwd`, or undefined outside a Git repository. */
-export async function projectRoot(host: Host, cwd: string): Promise<string | undefined> {
-  const top = await host.run(['git', 'rev-parse', '--show-toplevel'], cwd)
-  return succeeded(top) ? top.stdout.trim() : undefined
+/**
+ * The script Husky's package names as its `husky` command, run with `node`. Going through the
+ * package rather than `node_modules/.bin/husky` works on Windows too, where that is a `.cmd`
+ * launcher a process cannot start without a shell.
+ */
+async function huskyEntry(host: Host, root: string): Promise<string | undefined> {
+  const manifest = await readText(host, `${root}/node_modules/husky/package.json`)
+  if (manifest === undefined) return undefined
+  try {
+    const bin = (JSON.parse(manifest) as { bin?: string | Record<string, string> }).bin
+    const entry = typeof bin === 'string' ? bin : bin?.husky
+    return entry === undefined ? undefined : `${root}/node_modules/husky/${entry.replace(/^\.\//, '')}`
+  } catch {
+    return undefined
+  }
 }
 
 /** A config secret-guard wrote itself, which it may replace when the user picks the other manager. */
@@ -382,7 +417,7 @@ const isOwn = (config: string | undefined): boolean => config !== undefined && c
 async function uninstallHook(host: Host, root: string, manager: Manager): Promise<void> {
   const hook = await installedHook(host, root)
   const isTheirs = manager === 'lefthook' ? isLefthookHook(hook) : isPreCommitHook(hook)
-  if (isTheirs && (await isInstalled(host, manager, root))) await host.run([manager, 'uninstall'], root, 60_000)
+  if (isTheirs && (await isInstalled(host, manager))) await host.run([manager, 'uninstall'], root, 60_000)
 }
 
 const configName = (manager: Manager, lefthookFile: string | undefined): string =>
@@ -400,19 +435,21 @@ function withNote(outcome: Outcome, note: string | undefined): Outcome {
 }
 
 export async function ensureGuard(host: Host, cwd: string, options: GuardOptions): Promise<Outcome> {
-  const gitleaks = await host.run(['gitleaks', 'version'], cwd)
+  const gitleaks = await host.run(['gitleaks', 'version'], host.toolDir)
   if (!succeeded(gitleaks)) return { kind: 'skip', reason: 'gitleaks is not installed' }
 
-  const root = await projectRoot(host, cwd)
-  if (root === undefined) return { kind: 'skip', reason: 'not a Git repository' }
+  const location = await locateProject(host, cwd)
+  if (location.kind === 'unreachable') return { kind: 'warn', message: UNREACHABLE }
+  if (location.kind === 'none') return { kind: 'skip', reason: 'not a Git repository' }
+  const root = location.root
 
   const scan = scanCommand(gitleaks.stdout)
   const lefthookFile = await findLefthookConfig(host, root)
   const lefthookText = lefthookFile === undefined ? undefined : await host.read(`${root}/${lefthookFile}`)
   const preCommitText = await readText(host, `${root}/${PRE_COMMIT_CONFIG}`)
   const available: Record<Manager, boolean> = {
-    'pre-commit': await isInstalled(host, 'pre-commit', root),
-    lefthook: await isInstalled(host, 'lefthook', root),
+    'pre-commit': await isInstalled(host, 'pre-commit'),
+    lefthook: await isInstalled(host, 'lefthook'),
   }
   // A pick only counts while that manager is installed; otherwise projects keep what they have.
   const preferred = options.preferredManager !== undefined && available[options.preferredManager]
@@ -489,8 +526,9 @@ export const USE_USAGE =
  * Removes the manager the user did not pick from this machine: with Homebrew when it was installed
  * that way, otherwise says how to remove it by hand.
  */
-export async function removeManager(host: Host, manager: Manager, cwd: string): Promise<string> {
-  if (!(await isInstalled(host, manager, cwd))) return `${manager} is not installed, so there is nothing to remove.`
+export async function removeManager(host: Host, manager: Manager): Promise<string> {
+  if (!(await isInstalled(host, manager))) return `${manager} is not installed, so there is nothing to remove.`
+  const cwd = host.toolDir
   const brew = await host.run(['brew', 'list', '--versions', manager], cwd)
   if (!succeeded(brew) || brew.stdout.trim() === '') {
     return `${manager} was not installed with Homebrew, so it was left in place. Remove it with one of: ${REMOVE_BY_HAND[manager]}.`

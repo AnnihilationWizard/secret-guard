@@ -5,7 +5,7 @@ secret-guard adds a gitleaks pre-commit hook to Git projects you open in Claude 
 ## What the mod does
 
 - It hooks `session.start` and the EnterWorktree tool, and works in the session's Git project or the new worktree only.
-- It runs `gitleaks version`, `git`, `pre-commit --version`, `pre-commit install`, `lefthook version` and `lefthook install`. When it switches a project it set up to the other manager, it runs that manager's `uninstall`. In JS/TS projects it may run `npm pkg set`, the Husky binary in `node_modules/.bin`, and, only when `autoInstallHusky` is on, the project's package manager to add Husky.
+- It runs `gitleaks version`, `git`, `pre-commit --version`, `pre-commit install`, `lefthook version` and `lefthook install`. When it switches a project it set up to the other manager, it runs that manager's `uninstall`. In JS/TS projects it may run `npm pkg set`, Husky's own script from `node_modules/husky` with `node`, and, only when `autoInstallHusky` is on, the project's package manager to add Husky.
 - It writes `.pre-commit-config.yaml`, `lefthook.yml` or `.husky/pre-commit` in the project and may add a `prepare` script to `package.json`. It never rewrites a hook config that already exists, and never deletes files.
 - `/secret-guard-use <manager> --remove-other` runs `brew list` and `brew uninstall` for the other manager, and only when you type that flag. It keeps your pick with Claude Code's plugin storage.
 - It makes no network requests of its own. Installing Husky downloads it through the project's package manager, which runs that package's install scripts.

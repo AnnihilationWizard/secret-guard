@@ -6,11 +6,11 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.1.0-green.svg" alt="Version 1.1.0"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.1.1-green.svg" alt="Version 1.1.1"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/Platform-Claude%20Code-D97757.svg" alt="Platform: Claude Code"></a>
   <a href="hooks/register.ts"><img src="https://img.shields.io/badge/Type-Function%20hooks%20mod-6E7681.svg" alt="Function hooks mod"></a>
-  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-42%20passing-3FB950.svg" alt="42 tests passing"></a>
+  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-47%20passing-3FB950.svg" alt="47 tests passing"></a>
 </p>
 
 <p align="center">
@@ -170,7 +170,8 @@ In a pnpm workspace root, secret-guard installs with `pnpm add -w`. The pick fro
 - Only configs secret-guard wrote are switched to the other manager. A project's own config keeps its manager.
 - Teammates need `gitleaks` and the same hook manager.
 - Husky sets `core.hooksPath`, so hooks in `.git/hooks` stop running in that project, and pre-commit or Lefthook cannot install there.
-- Yarn Plug'n'Play projects have no `node_modules/.bin/husky`. secret-guard writes the hook and asks you to turn Husky on.
+- Yarn Plug'n'Play projects have no `node_modules/husky`. secret-guard writes the hook and asks you to turn Husky on.
+- On Windows, a project folder whose path is longer than about 260 characters stops commands from starting there. secret-guard shows a notice that the project is not protected; move it to a shorter path.
 - The `/plugin install` command is available in terminal sessions only. A user-scope install also loads in the desktop app's Code tab.
 
 ## Development

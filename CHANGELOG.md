@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.1] - 2026-10-17
+
+- Fixed: a project whose folder stops commands from starting, as a Windows path past about 260 characters does, was skipped as if gitleaks were not installed, with no notice. Tools are now checked from the mod's own folder, and such a project gets a notice that it is not protected.
+- Fixed: Husky is turned on by running its package's own script with `node`, instead of `node_modules/.bin/husky`, which on Windows is a `.cmd` launcher that cannot start without a shell.
+
 ## [1.1.0] - 2026-10-17
 
 - Lefthook support: secret-guard writes a `lefthook.yml` with a gitleaks command and runs `lefthook install`, writing the config first so Lefthook does not create an empty one. A project's existing Lefthook config is used in any file name and format Lefthook reads.
@@ -46,6 +51,7 @@ Initial release of secret-guard by AnnihilationWizard.
 
 Built on Claude Code's early-access function-hooks mod API.
 
+[1.1.1]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.1
 [1.1.0]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.0
 [1.0.3]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.3
 [1.0.2]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.2

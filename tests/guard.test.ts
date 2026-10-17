@@ -6,12 +6,14 @@ import {
   ensureGuard,
   huskyBlock,
   lefthookConfig,
+  locateProject,
   parseUseArgs,
   preCommitConfig,
   prependBlock,
   removalWarning,
   removeManager,
   scanCommand,
+  UNREACHABLE,
   type Host,
   type Outcome,
 } from '../hooks/guard.ts'
@@ -26,6 +28,16 @@ type Fake = {
   /** Paths, relative to ROOT, that `git ls-files --error-unmatch` reports as committed. */
   tracked: string[]
   ran: string[]
+  /** A folder no command can start in, as a Windows path past 260 characters behaves. */
+  unreachable?: string
+}
+
+const TOOL_DIR = '/mod'
+
+/** Husky 9 as installed in node_modules: its package names bin.js as the husky command. */
+function installHusky(fake: Fake): void {
+  fake.files[`${ROOT}/node_modules/husky/package.json`] = '{"name":"husky","bin":{"husky":"bin.js"}}'
+  fake.commands[`node ${ROOT}/node_modules/husky/bin.js`] = {}
 }
 
 const COMMIT_CONFIG_HINT =
@@ -34,9 +46,10 @@ const COMMIT_HUSKY_HINT = ' Commit .husky/pre-commit so other worktrees and clon
 
 function fakeHost(fake: Fake): Host {
   return {
-    run: async argv => {
+    run: async (argv, cwd) => {
       const key = argv.join(' ')
       fake.ran.push(key)
+      if (fake.unreachable !== undefined && cwd === fake.unreachable) return undefined
       if (key.startsWith('git ls-files --error-unmatch -- ')) {
         const isTracked = fake.tracked.includes(argv[argv.length - 1] ?? '')
         return { exitCode: isTracked ? 0 : 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
@@ -54,6 +67,7 @@ function fakeHost(fake: Fake): Host {
     write: async (path, text) => {
       fake.files[path] = text
     },
+    toolDir: TOOL_DIR,
   }
 }
 
@@ -170,13 +184,13 @@ test('JS project with Husky: puts gitleaks ahead of the existing hook and turns 
   fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^9.1.0"},"scripts":{"prepare":"husky"}}'
   fake.files[`${ROOT}/.husky/pre-commit`] = 'npm test\n'
   fake.tracked.push('.husky/pre-commit')
-  fake.commands[`${ROOT}/node_modules/.bin/husky`] = {}
+  installHusky(fake)
   const host = fakeHost(fake)
   const outcome = await ensureGuard(host, ROOT, { autoInstallHusky: false })
   expect(outcome).toEqual({ kind: 'added', message: 'Added gitleaks to .husky/pre-commit.' })
   const hook = fake.files[`${ROOT}/.husky/pre-commit`] ?? ''
   expect(hook.indexOf('gitleaks git')).toBeLessThan(hook.indexOf('npm test'))
-  expect(fake.ran).toContain(`${ROOT}/node_modules/.bin/husky`)
+  expect(fake.ran).toContain(`node ${ROOT}/node_modules/husky/bin.js`)
   expect(fake.ran).not.toContain('pre-commit install')
 })
 
@@ -186,7 +200,7 @@ test('JS project with auto-install on: installs Husky with the package manager i
   fake.files[`${ROOT}/yarn.lock`] = ''
   fake.commands['yarn add -D husky'] = {}
   fake.commands['npm pkg set scripts.prepare=husky || true'] = {}
-  fake.commands[`${ROOT}/node_modules/.bin/husky`] = {}
+  installHusky(fake)
   const host = fakeHost(fake)
   const outcome = await ensureGuard(host, ROOT, { autoInstallHusky: true })
   expect(outcome).toEqual({
@@ -205,7 +219,7 @@ test('installs Husky with -w at a pnpm workspace root', async () => {
   fake.files[`${ROOT}/pnpm-lock.yaml`] = ''
   fake.files[`${ROOT}/pnpm-workspace.yaml`] = 'packages:\n  - packages/*\n'
   fake.commands['pnpm add -w -D husky'] = {}
-  fake.commands[`${ROOT}/node_modules/.bin/husky`] = {}
+  installHusky(fake)
   const host = fakeHost(fake)
   expect((await ensureGuard(host, ROOT, { autoInstallHusky: true })).kind).toBe('added')
   expect(fake.ran).toContain('pnpm add -w -D husky')
@@ -289,7 +303,7 @@ test('every notice and generated file is in English', async () => {
     {
       setup: f => {
         f.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"9"},"scripts":{"prepare":"node setup.js"}}'
-        f.commands[`${ROOT}/node_modules/.bin/husky`] = {}
+        installHusky(f)
       },
       autoInstallHusky: false,
     },
@@ -411,7 +425,7 @@ test('JS project without Husky and Lefthook installed: uses Lefthook instead of 
 test('JS project that already uses Husky keeps Husky even with Lefthook installed', async () => {
   const fake = lefthookOnly()
   fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^9.1.0"},"scripts":{"prepare":"husky"}}'
-  fake.commands[`${ROOT}/node_modules/.bin/husky`] = {}
+  installHusky(fake)
   await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
   expect(fake.files[`${ROOT}/.husky/pre-commit`]).toContain('gitleaks git --pre-commit')
   expect(fake.files[`${ROOT}/lefthook.yml`]).toBeUndefined()
@@ -510,14 +524,14 @@ test('removeManager uninstalls with Homebrew when it was installed that way', as
   const fake = bothInstalled()
   fake.commands['brew list --versions pre-commit'] = { stdout: 'pre-commit 4.7.0\n' }
   fake.commands['brew uninstall pre-commit'] = {}
-  expect(await removeManager(fakeHost(fake), 'pre-commit', ROOT)).toBe('Removed pre-commit with Homebrew.')
+  expect(await removeManager(fakeHost(fake), 'pre-commit')).toBe('Removed pre-commit with Homebrew.')
   expect(fake.ran).toContain('brew uninstall pre-commit')
 })
 
 test('removeManager leaves a non-Homebrew install in place and says how to remove it', async () => {
   const fake = bothInstalled()
   fake.commands['brew list --versions lefthook'] = { exitCode: 1 }
-  const text = await removeManager(fakeHost(fake), 'lefthook', ROOT)
+  const text = await removeManager(fakeHost(fake), 'lefthook')
   expect(text).toContain('was not installed with Homebrew, so it was left in place')
   expect(text).toContain('npm uninstall -g lefthook')
   expect(fake.ran.some(c => c.startsWith('brew uninstall'))).toBe(false)
@@ -525,11 +539,56 @@ test('removeManager leaves a non-Homebrew install in place and says how to remov
 
 test('removeManager does nothing when the manager is not installed', async () => {
   const fake = lefthookOnly()
-  expect(await removeManager(fakeHost(fake), 'pre-commit', ROOT)).toBe('pre-commit is not installed, so there is nothing to remove.')
+  expect(await removeManager(fakeHost(fake), 'pre-commit')).toBe('pre-commit is not installed, so there is nothing to remove.')
 })
 
 test('removalWarning asks for confirmation before anything is removed', () => {
   expect(removalWarning('pre-commit', 'lefthook')).toContain('/secret-guard-use lefthook --remove-other')
+})
+
+// --- Folders where commands cannot start (Windows long paths) -------------------------------------
+
+test('a folder where commands cannot start gets a warning instead of a silent skip', async () => {
+  const fake = base()
+  fake.commands['git --version'] = { stdout: 'git version 2.51.0\n' }
+  fake.unreachable = ROOT
+  expect(await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })).toEqual({ kind: 'warn', message: UNREACHABLE })
+  expect(Object.keys(fake.files)).toEqual([])
+})
+
+test('tools are checked from the mod folder, so a project folder failure is not read as gitleaks missing', async () => {
+  const fake = base()
+  fake.commands['git --version'] = { stdout: 'git version 2.51.0\n' }
+  fake.unreachable = ROOT
+  const outcome = await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
+  expect(outcome.kind).not.toBe('skip')
+})
+
+test('with git missing everywhere, a folder is skipped as before', async () => {
+  const fake = base()
+  delete fake.commands['git rev-parse --show-toplevel']
+  expect(await locateProject(fakeHost(fake), ROOT)).toEqual({ kind: 'none' })
+})
+
+// --- Husky on any platform -------------------------------------------------------------------------
+
+test("Husky is turned on through node and the package's own bin entry", async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^9.1.0"},"scripts":{"prepare":"husky"}}'
+  fake.files[`${ROOT}/node_modules/husky/package.json`] = '{"name":"husky","bin":"./bin.js"}'
+  fake.commands[`node ${ROOT}/node_modules/husky/bin.js`] = {}
+  expect((await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })).kind).toBe('added')
+  expect(fake.ran.some(c => c.includes('node_modules/.bin/husky'))).toBe(false)
+})
+
+test('without node_modules, Husky is not turned on and the notice says to run the install', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^9.1.0"},"scripts":{"prepare":"husky"}}'
+  const outcome = await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
+  expect(outcome).toEqual({
+    kind: 'warn',
+    message: 'Wrote .husky/pre-commit, but could not turn Husky on (are node_modules installed?). Run the project install.',
+  })
 })
 
 test('scanCommand picks the command for the gitleaks version', () => {

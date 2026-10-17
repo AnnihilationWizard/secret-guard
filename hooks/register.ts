@@ -5,10 +5,11 @@ import {
   hostFrom,
   isInstalled,
   other,
+  locateProject,
   parseUseArgs,
-  projectRoot,
   removalWarning,
   removeManager,
+  UNREACHABLE,
   USE_USAGE,
   type Manager,
 } from './guard.ts'
@@ -26,12 +27,19 @@ async function preferredManager($: EngineInterface): Promise<Manager | undefined
 
 async function check($: EngineInterface, cwd: string, autoInstallHusky: boolean): Promise<void> {
   const host = hostFrom($)
-  const root = await projectRoot(host, cwd)
-  if (root === undefined || checked.has(root)) return
-  checked.add(root)
+  const location = await locateProject(host, cwd)
+  if (location.kind === 'none') return
+  // A folder where commands cannot start has no root to key on; its own path stands in.
+  const key = location.kind === 'repo' ? location.root : cwd
+  if (checked.has(key)) return
+  checked.add(key)
+  if (location.kind === 'unreachable') {
+    $.ui.toast(UNREACHABLE)
+    return
+  }
   const preferred = await preferredManager($)
   if (preferred === undefined && !isBothNoticeShown) {
-    if ((await isInstalled(host, 'pre-commit', cwd)) && (await isInstalled(host, 'lefthook', cwd))) {
+    if ((await isInstalled(host, 'pre-commit')) && (await isInstalled(host, 'lefthook'))) {
       isBothNoticeShown = true
       $.ui.toast(BOTH_INSTALLED)
     }
@@ -57,19 +65,18 @@ async function use($: EngineInterface, args: string, autoInstallHusky: boolean):
   const cwd = await $.session.cwd()
 
   // Switch this project now, while the other manager is still installed to remove its hook.
-  const root = await projectRoot(host, cwd)
-  if (root !== undefined) checked.delete(root)
+  const location = await locateProject(host, cwd)
   let project = ''
-  if (root !== undefined) {
-    checked.add(root)
+  if (location.kind !== 'none') {
+    checked.add(location.kind === 'repo' ? location.root : cwd)
     const outcome = await ensureGuard(host, cwd, { autoInstallHusky, preferredManager: parsed.manager })
     project = outcome.kind === 'added' || outcome.kind === 'warn' ? ` This project: ${outcome.message}` : ''
   }
 
   const unpicked = other(parsed.manager)
   const machine = parsed.removeOther
-    ? await removeManager(host, unpicked, cwd)
-    : (await isInstalled(host, unpicked, cwd))
+    ? await removeManager(host, unpicked)
+    : (await isInstalled(host, unpicked))
       ? removalWarning(unpicked, parsed.manager)
       : ''
   return [`secret-guard now sets up ${parsed.manager}.${project}`, machine].filter(s => s !== '').join('\n')
