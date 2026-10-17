@@ -6,11 +6,11 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.1.2-green.svg" alt="Version 1.1.2"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.1.3-green.svg" alt="Version 1.1.3"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/Platform-Claude%20Code-D97757.svg" alt="Platform: Claude Code"></a>
   <a href="hooks/register.ts"><img src="https://img.shields.io/badge/Type-Function%20hooks%20mod-6E7681.svg" alt="Function hooks mod"></a>
-  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-50%20passing-3FB950.svg" alt="50 tests passing"></a>
+  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-51%20passing-3FB950.svg" alt="51 tests passing"></a>
 </p>
 
 <p align="center">

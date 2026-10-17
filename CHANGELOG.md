@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.3] - 2026-10-17
+
+- Fixed: on Windows, projects set up with pre-commit or Lefthook were not protected; the check stopped with only "The check failed". The installed hook was looked up with `git rev-parse --git-path hooks/pre-commit`, which follows the `core.hooksPath` Claude Code sets to the null device for a mod's git, and so named `\\.\NUL\pre-commit`, a path Claude Code refuses. secret-guard now finds the hook from `--git-common-dir`, which ignores that override and points worktrees at the shared `.git`.
+- Fixed: on macOS the same lookup failed quietly, so a project that was already set up had its hook reinstalled, and a notice shown, in every session.
+- A path Claude Code refuses to look at no longer stops the whole check.
+
 ## [1.1.2] - 2026-10-17
 
 - Fixed: on Windows the notice said "added a prepare script" while `package.json` had none. `npm pkg set` is a `.cmd` launcher that cannot start without a shell, and its failure went unchecked. secret-guard now writes `scripts.prepare` into `package.json` itself, keeping the file's indentation, key order, line endings and final newline, and reads the file again after installing Husky so the new devDependency is kept.
@@ -56,6 +62,7 @@ Initial release of secret-guard by AnnihilationWizard.
 
 Built on Claude Code's early-access function-hooks mod API.
 
+[1.1.3]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.3
 [1.1.2]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.2
 [1.1.1]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.1
 [1.1.0]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.0
