@@ -338,7 +338,7 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
         message: `This JS/TS project has no Husky. Run \`${pm.add.join(' ')}\`, or turn on secret-guard's Auto-install Husky option.`,
       }
     }
-    const added = await host.run(pm.add, root, 600_000)
+    const added = await runPackageManager(host, pm.add, root, 600_000)
     if (!succeeded(added)) {
       return { kind: 'warn', message: `Installing Husky with ${pm.name} failed: ${failure(added)}` }
     }
@@ -347,7 +347,10 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
   const prepare = pkg.scripts?.prepare
   if (prepare === undefined) {
     // `|| true`: installs without dev dependencies (npm ci --omit=dev, Docker) have no husky, and prepare must not fail them.
-    await host.run(['npm', 'pkg', 'set', `scripts.prepare=${PREPARE_SCRIPT}`], root)
+    // Read again: installing Husky above has just changed package.json.
+    const updated = withPrepareScript(await host.read(`${root}/package.json`))
+    if (updated === undefined) return { kind: 'warn', message: 'package.json could not be parsed. Nothing was changed.' }
+    await host.write(`${root}/package.json`, updated)
   }
 
   await host.write(hookPath, prependBlock(hook, huskyBlock(scan)))
@@ -373,6 +376,41 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
   const sentence = notes.join('; ')
   const hint = (await isTracked(host, root, HUSKY_HOOK)) ? '' : commitHint(HUSKY_HOOK)
   return { kind: 'added', message: `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.${hint}` }
+}
+
+/**
+ * package.json with `scripts.prepare` set to PREPARE_SCRIPT, keeping its indentation, key order,
+ * line endings and final newline; undefined when it is not a JSON object. Written by the mod
+ * itself rather than through `npm pkg set`, which on Windows is a `.cmd` launcher.
+ */
+export function withPrepareScript(text: string): string | undefined {
+  let data: unknown
+  try {
+    data = JSON.parse(text)
+  } catch {
+    return undefined
+  }
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined
+  const manifest = data as Record<string, unknown>
+  const scripts = typeof manifest.scripts === 'object' && manifest.scripts !== null ? manifest.scripts : {}
+  manifest.scripts = { ...scripts, prepare: PREPARE_SCRIPT }
+  const indent = /^[ \t]+(?=")/m.exec(text)?.[0] ?? '  '
+  const eol = text.includes('\r\n') ? '\r\n' : '\n'
+  const body = JSON.stringify(manifest, null, indent).replace(/\n/g, eol)
+  return /\r?\n$/.test(text) ? `${body}${eol}` : body
+}
+
+/**
+ * Runs a Node package manager. On Windows npm, pnpm and yarn are `.cmd` launchers that a process
+ * cannot start without a shell, so a run that could not start is tried again through cmd.
+ */
+async function runPackageManager(
+  host: Host,
+  argv: readonly string[],
+  cwd: string,
+  timeoutMs: number,
+): Promise<ProcessRunResult | undefined> {
+  return (await host.run(argv, cwd, timeoutMs)) ?? host.run(['cmd', '/d', '/s', '/c', ...argv], cwd, timeoutMs)
 }
 
 const hasHuskyDependency = (pkg: PackageJson): boolean =>

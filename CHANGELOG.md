@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.2] - 2026-10-17
+
+- Fixed: on Windows the notice said "added a prepare script" while `package.json` had none. `npm pkg set` is a `.cmd` launcher that cannot start without a shell, and its failure went unchecked. secret-guard now writes `scripts.prepare` into `package.json` itself, keeping the file's indentation, key order, line endings and final newline, and reads the file again after installing Husky so the new devDependency is kept.
+- Fixed: with `autoInstallHusky` on, installing Husky with npm, pnpm or yarn failed on Windows for the same reason. A package manager that cannot start directly is now run through `cmd`.
+
 ## [1.1.1] - 2026-10-17
 
 - Fixed: a project whose folder stops commands from starting, as a Windows path past about 260 characters does, was skipped as if gitleaks were not installed, with no notice. Tools are now checked from the mod's own folder, and such a project gets a notice that it is not protected.
@@ -51,6 +56,7 @@ Initial release of secret-guard by AnnihilationWizard.
 
 Built on Claude Code's early-access function-hooks mod API.
 
+[1.1.2]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.2
 [1.1.1]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.1
 [1.1.0]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.0
 [1.0.3]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.0.3

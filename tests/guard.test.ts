@@ -14,6 +14,7 @@ import {
   removeManager,
   scanCommand,
   UNREACHABLE,
+  withPrepareScript,
   type Host,
   type Outcome,
 } from '../hooks/guard.ts'
@@ -30,6 +31,8 @@ type Fake = {
   ran: string[]
   /** A folder no command can start in, as a Windows path past 260 characters behaves. */
   unreachable?: string
+  /** What a successful command does to the files, by argv joined with spaces. */
+  onRun: Record<string, (fake: Fake) => void>
 }
 
 const TOOL_DIR = '/mod'
@@ -56,7 +59,9 @@ function fakeHost(fake: Fake): Host {
       }
       const r = fake.commands[key]
       if (r === undefined) return undefined
-      return { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false, ...r }
+      const result = { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false, ...r }
+      if (result.exitCode === 0) fake.onRun[key]?.(fake)
+      return result
     },
     exists: async path => path in fake.files,
     read: async path => {
@@ -74,6 +79,7 @@ function fakeHost(fake: Fake): Host {
 const base = (): Fake => ({
   files: {},
   tracked: [],
+  onRun: {},
   ran: [],
   commands: {
     'gitleaks version': { stdout: '8.21.2\n' },
@@ -199,7 +205,10 @@ test('JS project with auto-install on: installs Husky with the package manager i
   fake.files[`${ROOT}/package.json`] = '{"name":"app"}'
   fake.files[`${ROOT}/yarn.lock`] = ''
   fake.commands['yarn add -D husky'] = {}
-  fake.commands['npm pkg set scripts.prepare=husky || true'] = {}
+  // yarn writes the new devDependency, which the prepare script must not overwrite.
+  fake.onRun['yarn add -D husky'] = f => {
+    f.files[`${ROOT}/package.json`] = '{"name":"app","devDependencies":{"husky":"^9.1.7"}}'
+  }
   installHusky(fake)
   const host = fakeHost(fake)
   const outcome = await ensureGuard(host, ROOT, { autoInstallHusky: true })
@@ -209,8 +218,44 @@ test('JS project with auto-install on: installs Husky with the package manager i
   })
   expect(fake.ran).toContain('yarn add -D husky')
   // Installs without dev dependencies have no husky, so prepare must tolerate it or npm ci --omit=dev fails.
-  expect(fake.ran).toContain('npm pkg set scripts.prepare=husky || true')
+  expect(JSON.parse(fake.files[`${ROOT}/package.json`] ?? '{}')).toEqual({
+    name: 'app',
+    devDependencies: { husky: '^9.1.7' },
+    scripts: { prepare: 'husky || true' },
+  })
+  expect(fake.ran.some(c => c.startsWith('npm pkg'))).toBe(false)
   expect(fake.files[`${ROOT}/.husky/pre-commit`]).toContain('gitleaks git --pre-commit')
+})
+
+test('a package manager that cannot start directly is retried through cmd, as npm.cmd on Windows needs', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"name":"app"}'
+  fake.commands['cmd /d /s /c npm install --save-dev husky'] = {}
+  installHusky(fake)
+  const outcome = await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: true })
+  expect(outcome.kind === 'added' && outcome.message).toContain('Installed Husky with npm')
+  expect(fake.ran).toContain('npm install --save-dev husky')
+  expect(fake.ran).toContain('cmd /d /s /c npm install --save-dev husky')
+})
+
+test('a package manager that cannot start at all reports the failure instead of claiming success', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"name":"app"}'
+  const outcome = await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: true })
+  expect(outcome).toEqual({ kind: 'warn', message: 'Installing Husky with npm failed: could not run' })
+  expect(fake.files[`${ROOT}/package.json`]).toBe('{"name":"app"}')
+})
+
+test('withPrepareScript keeps indentation, key order, line endings and the final newline', () => {
+  expect(withPrepareScript('{\n\t"name": "app",\n\t"scripts": {\n\t\t"test": "vitest"\n\t}\n}\n')).toBe(
+    '{\n\t"name": "app",\n\t"scripts": {\n\t\t"test": "vitest",\n\t\t"prepare": "husky || true"\n\t}\n}\n',
+  )
+  expect(withPrepareScript('{\r\n    "name": "app"\r\n}\r\n')).toBe(
+    '{\r\n    "name": "app",\r\n    "scripts": {\r\n        "prepare": "husky || true"\r\n    }\r\n}\r\n',
+  )
+  expect(withPrepareScript('{"name":"app"}')).toBe('{\n  "name": "app",\n  "scripts": {\n    "prepare": "husky || true"\n  }\n}')
+  expect(withPrepareScript('[1, 2]')).toBeUndefined()
+  expect(withPrepareScript('{not json')).toBeUndefined()
 })
 
 test('installs Husky with -w at a pnpm workspace root', async () => {
@@ -419,7 +464,7 @@ test('JS project without Husky and Lefthook installed: uses Lefthook instead of 
   const outcome = await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
   expect(outcome.kind).toBe('added')
   expect(fake.files[`${ROOT}/lefthook.yml`]).toBe(lefthookConfig(SCAN))
-  expect(fake.ran).not.toContain('npm pkg set scripts.prepare=husky || true')
+  expect(fake.files[`${ROOT}/package.json`]).toBe('{"name":"app"}')
 })
 
 test('JS project that already uses Husky keeps Husky even with Lefthook installed', async () => {
