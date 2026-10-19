@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.1.5] - 2026-10-19
+
+- Fixed: `/secret-guard-use` with a manager that is not installed said "Picked pre-commit: new projects get it from now on", though a pick only counts while that manager is installed, so new projects kept the other one. Such a pick is now refused, nothing is stored or changed, and the output says how to install the manager for the platform.
+- Fixed: with `--remove-other`, that same pick could have uninstalled the only manager left. The refusal comes first, so nothing is removed.
+
 ## [1.1.4] - 2026-10-17
 
 - `/secret-guard-use --remove-other` lists `uv tool uninstall pre-commit` among the ways to remove pre-commit by hand. On Windows it never calls Homebrew and lists uv, pipx and pip, or Scoop, winget and npm, first.
@@ -68,6 +73,7 @@ Initial release of secret-guard by AnnihilationWizard.
 
 Built on Claude Code's early-access function-hooks mod API.
 
+[1.1.5]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.5
 [1.1.4]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.4
 [1.1.3]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.3
 [1.1.2]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.2

@@ -591,6 +591,27 @@ export function parseUseArgs(args: string): { manager: Manager; removeOther: boo
   return { manager, removeOther: rest.includes('--remove-other') }
 }
 
+/** How each manager is installed, listed for the platform first. */
+const INSTALL: Record<'unix' | 'windows', Record<Manager, string>> = {
+  unix: {
+    'pre-commit': 'brew install pre-commit, uv tool install pre-commit or pipx install pre-commit',
+    lefthook: 'brew install lefthook or npm install -g lefthook',
+  },
+  windows: {
+    'pre-commit': 'uv tool install pre-commit, pipx install pre-commit or pip install pre-commit',
+    lefthook: 'scoop install lefthook, winget install evilmartians.lefthook or npm install -g lefthook',
+  },
+}
+
+/**
+ * Why a pick of a manager that is not installed is refused. Kept, it would not count (a pick
+ * only counts while installed), and with --remove-other it would uninstall the only manager left.
+ */
+export function notInstalledPick(host: Host, manager: Manager): string {
+  const ways = INSTALL[isWindows(host) ? 'windows' : 'unix'][manager]
+  return `${manager} is not installed, so the pick was not kept and nothing was changed. Install it with one of: ${ways}; then run /secret-guard-use ${manager} again.`
+}
+
 export const USE_USAGE =
   'Usage: /secret-guard-use pre-commit|lefthook [--remove-other]. Picks the hook manager secret-guard sets up; --remove-other then uninstalls the other one.'
 

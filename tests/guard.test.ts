@@ -8,6 +8,7 @@ import {
   isWindows,
   lefthookConfig,
   locateProject,
+  notInstalledPick,
   parseUseArgs,
   preCommitConfig,
   prependBlock,
@@ -617,6 +618,20 @@ test('on Windows removeManager never calls brew and lists Windows ways first', a
 
 test('isWindows is false for a POSIX mod folder', () => {
   expect(isWindows(fakeHost(base()))).toBe(false)
+})
+
+test('a pick of a manager that is not installed is refused with how to install it', () => {
+  const text = notInstalledPick(fakeHost(base()), 'pre-commit')
+  expect(text).toContain('pre-commit is not installed, so the pick was not kept and nothing was changed.')
+  expect(text).toContain('brew install pre-commit')
+  expect(text).toContain('then run /secret-guard-use pre-commit again')
+})
+
+test('on Windows the install hint for a refused pick never names Homebrew', () => {
+  const host = { ...fakeHost(base()), toolDir: 'C:\\Users\\dev\\.claude\\plugins\\secret-guard' }
+  const text = notInstalledPick(host, 'lefthook')
+  expect(text).toContain('Install it with one of: scoop install lefthook')
+  expect(text).not.toContain('brew')
 })
 
 test('removalWarning asks for confirmation before anything is removed', () => {

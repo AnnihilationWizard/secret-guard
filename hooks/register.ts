@@ -6,6 +6,7 @@ import {
   isInstalled,
   other,
   locateProject,
+  notInstalledPick,
   parseUseArgs,
   removalWarning,
   removeManager,
@@ -74,6 +75,8 @@ function inBackground($: EngineInterface, cwd: string, autoInstallHusky: boolean
 async function use($: EngineInterface, args: string, autoInstallHusky: boolean): Promise<string> {
   const parsed = parseUseArgs(args)
   if (parsed === undefined) return USE_USAGE
+  const host = hostFrom($)
+  if (!(await isInstalled(host, parsed.manager))) return notInstalledPick(host, parsed.manager)
   generation += 1
   return inTurn(() => switchTo($, parsed.manager, parsed.removeOther, autoInstallHusky))
 }
