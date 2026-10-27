@@ -798,3 +798,9 @@ test('a CRLF Husky hook gets the gitleaks step with CRLF line endings only', asy
   expect(hook).toContain('gitleaks git --pre-commit')
   expect(hook.replace(/\r\n/g, '')).not.toContain('\n')
 })
+
+test('the Husky step names no platform-specific install command, since teammates may use any system', () => {
+  const block = huskyBlock(SCAN)
+  expect(block).not.toContain('brew')
+  expect(block).toContain('https://github.com/gitleaks/gitleaks#installing')
+})

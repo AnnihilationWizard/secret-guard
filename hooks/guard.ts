@@ -175,7 +175,7 @@ export function huskyBlock(scan: string): string {
 if command -v gitleaks >/dev/null 2>&1; then
   ${scan} || exit 1
 else
-  echo "gitleaks is not installed; skipping the secret scan (brew install gitleaks)" >&2
+  echo "gitleaks is not installed; skipping the secret scan (install: https://github.com/gitleaks/gitleaks#installing)" >&2
 fi
 `
 }
