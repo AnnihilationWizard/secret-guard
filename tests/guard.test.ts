@@ -804,3 +804,114 @@ test('the Husky step names no platform-specific install command, since teammates
   expect(block).not.toContain('brew')
   expect(block).toContain('https://github.com/gitleaks/gitleaks#installing')
 })
+
+// --- Husky 8 ----------------------------------------------------------------------------------------
+
+const HUSKY_8_HEADER = '#!/usr/bin/env sh\n. "$(dirname -- "$0")/_/husky.sh"\n\n'
+
+/** Husky 8 as installed in node_modules: `husky install` turns it on and says so. */
+function installHusky8(fake: Fake): void {
+  fake.files[`${ROOT}/node_modules/husky/package.json`] = '{"name":"husky","version":"8.0.3","bin":"lib/bin.js"}'
+  fake.commands[`node ${ROOT}/node_modules/husky/lib/bin.js install`] = { stdout: 'husky - Git hooks installed\n' }
+  fake.commands[`chmod +x ${ROOT}/.husky/pre-commit`] = {}
+}
+
+test('Husky 8: a new hook gets the shebang and husky.sh line, is made executable, and Husky is turned on with install', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^8.0.3"}}'
+  installHusky8(fake)
+  const outcome = await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
+  expect(outcome).toEqual({
+    kind: 'added',
+    message: `Added a prepare script; added gitleaks to .husky/pre-commit.${COMMIT_HUSKY_HINT}`,
+  })
+  expect(fake.files[`${ROOT}/.husky/pre-commit`]).toBe(`${HUSKY_8_HEADER}${huskyBlock(SCAN)}`)
+  expect(fake.ran).toContain(`chmod +x ${ROOT}/.husky/pre-commit`)
+  expect(fake.ran).toContain(`node ${ROOT}/node_modules/husky/lib/bin.js install`)
+  // Run bare, Husky 8 only prints its help, so the prepare script names install.
+  expect(JSON.parse(fake.files[`${ROOT}/package.json`] ?? '{}').scripts).toEqual({ prepare: 'husky install || true' })
+})
+
+test('Husky 8: an existing hook keeps its own first lines and is not touched by chmod', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^8.0.3"},"scripts":{"prepare":"husky install"}}'
+  fake.files[`${ROOT}/.husky/pre-commit`] = `${HUSKY_8_HEADER}npm test\n`
+  installHusky8(fake)
+  await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
+  const hook = fake.files[`${ROOT}/.husky/pre-commit`] ?? ''
+  expect(hook.startsWith('#!/usr/bin/env sh\n# secret-guard')).toBe(true)
+  expect(hook.indexOf('gitleaks git')).toBeLessThan(hook.indexOf('npm test'))
+  expect(fake.ran.some(c => c.startsWith('chmod'))).toBe(false)
+  expect(fake.files[`${ROOT}/package.json`]).toBe('{"devDependencies":{"husky":"^8.0.3"},"scripts":{"prepare":"husky install"}}')
+})
+
+test('Husky 8 on Windows: no chmod, and the commit hint marks the hook executable for macOS and Linux clones', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^8.0.3"}}'
+  installHusky8(fake)
+  const host = { ...fakeHost(fake), toolDir: WINDOWS_TOOL_DIR }
+  const outcome = await ensureGuard(host, ROOT, { autoInstallHusky: false })
+  expect(outcome.kind === 'added' && outcome.message).toContain(
+    'git add .husky/pre-commit, then git update-index --chmod=+x .husky/pre-commit, then git commit',
+  )
+  expect(fake.files[`${ROOT}/.husky/pre-commit`]?.startsWith('#!/usr/bin/env sh\n')).toBe(true)
+  expect(fake.ran.some(c => c.startsWith('chmod'))).toBe(false)
+})
+
+test('Husky 8 without node_modules: the hook is still made runnable, from the version package.json asks for', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"~8.0.0"}}'
+  fake.commands[`chmod +x ${ROOT}/.husky/pre-commit`] = {}
+  const outcome = await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
+  expect(outcome.kind).toBe('warn')
+  expect(fake.files[`${ROOT}/.husky/pre-commit`]?.startsWith(HUSKY_8_HEADER)).toBe(true)
+  expect(fake.ran).toContain(`chmod +x ${ROOT}/.husky/pre-commit`)
+})
+
+test('Husky 8: a hook that could not be made executable says how to fix it', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^8.0.3"},"scripts":{"prepare":"husky install"}}'
+  installHusky8(fake)
+  fake.commands[`chmod +x ${ROOT}/.husky/pre-commit`] = { exitCode: 1, stderr: 'Operation not permitted' }
+  const outcome = await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
+  expect(outcome.kind === 'added' && outcome.message).toContain('it is not executable, so git skips it: run chmod +x .husky/pre-commit')
+})
+
+test('Husky 8 that skips its install (HUSKY=0) is not reported as on', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^8.0.3"},"scripts":{"prepare":"husky install"}}'
+  installHusky8(fake)
+  fake.commands[`node ${ROOT}/node_modules/husky/lib/bin.js install`] = {
+    stdout: 'husky - HUSKY env variable is set to 0, skipping install\n',
+  }
+  expect(await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })).toEqual({
+    kind: 'warn',
+    message: 'Wrote .husky/pre-commit, but Husky did not turn on: husky - HUSKY env variable is set to 0, skipping install',
+  })
+})
+
+// --- Husky 9 ----------------------------------------------------------------------------------------
+
+test('Husky 9 that prints why it did not turn on, with exit 0, is not reported as on', async () => {
+  for (const said of ['HUSKY=0 skip install', ".git can't be found", 'git command not found']) {
+    const fake = base()
+    fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^9.1.0"},"scripts":{"prepare":"husky"}}'
+    installHusky(fake)
+    fake.commands[`node ${ROOT}/node_modules/husky/bin.js`] = { stdout: said }
+    expect(await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })).toEqual({
+      kind: 'warn',
+      message: `Wrote .husky/pre-commit, but Husky did not turn on: ${said}`,
+    })
+  }
+})
+
+test('Husky 9: a new hook is written as before, without a shebang or chmod, and Husky runs without install', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^9.1.0"},"scripts":{"prepare":"husky"}}'
+  fake.files[`${ROOT}/node_modules/husky/package.json`] = '{"name":"husky","version":"9.1.7","bin":{"husky":"bin.js"}}'
+  fake.commands[`node ${ROOT}/node_modules/husky/bin.js`] = {}
+  expect((await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })).kind).toBe('added')
+  expect(fake.files[`${ROOT}/.husky/pre-commit`]).toBe(huskyBlock(SCAN))
+  expect(fake.ran.some(c => c.startsWith('chmod'))).toBe(false)
+  expect(fake.ran).not.toContain(`node ${ROOT}/node_modules/husky/bin.js install`)
+})

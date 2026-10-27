@@ -34,6 +34,12 @@ const MARK = '# secret-guard'
 
 export const PREPARE_SCRIPT = 'husky || true'
 
+/** Husky 8 and older are turned on with `husky install`; run bare, they only print their help. */
+const LEGACY_PREPARE_SCRIPT = 'husky install || true'
+
+/** What Husky 8's `husky add` writes ahead of a new hook's commands. */
+const LEGACY_HUSKY_HEADER = '#!/usr/bin/env sh\n. "$(dirname -- "$0")/_/husky.sh"\n\n'
+
 const PRE_COMMIT_CONFIG = '.pre-commit-config.yaml'
 const HUSKY_HOOK = '.husky/pre-commit'
 const LEFTHOOK_CONFIG = 'lefthook.yml'
@@ -52,10 +58,11 @@ async function isTracked(host: Host, root: string, path: string): Promise<boolea
 
 /**
  * An uncommitted hook file exists only in this folder: other worktrees and fresh clones lack it.
- * The commands are named one by one: Windows PowerShell 5.1 rejects `&&`.
+ * The commands are named one by one: Windows PowerShell 5.1 rejects `&&`. `between` is a command
+ * to run after the add.
  */
-const commitHint = (path: string): string =>
-  ` Commit ${path} so other worktrees and clones get it: git add ${path}, then git commit`
+const commitHint = (path: string, between?: string): string =>
+  ` Commit ${path} so other worktrees and clones get it: git add ${path}, then ${between === undefined ? '' : `${between}, then `}git commit`
 
 export function hostFrom($: EngineInterface): Host {
   return {
@@ -396,25 +403,36 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
     }
   }
 
+  // The installed version, else the one package.json asks for (node_modules may not be installed yet).
+  const husky = await huskyPackage(host, root)
+  const major = husky.major ?? declaredMajor(pkg.devDependencies?.husky ?? pkg.dependencies?.husky)
+  const isLegacy = major !== undefined && major < 9
+
   const prepare = pkg.scripts?.prepare
   if (prepare === undefined) {
     // `|| true`: installs without dev dependencies (npm ci --omit=dev, Docker) have no husky, and prepare must not fail them.
     // Read again: installing Husky above has just changed package.json.
-    const updated = withPrepareScript(await host.read(`${root}/package.json`))
+    const updated = withPrepareScript(await host.read(`${root}/package.json`), isLegacy ? LEGACY_PREPARE_SCRIPT : PREPARE_SCRIPT)
     if (updated === undefined) return { kind: 'warn', message: 'package.json could not be parsed. Nothing was changed.' }
     await host.write(`${root}/package.json`, updated)
   }
 
-  await host.write(hookPath, prependBlock(hook, huskyBlock(scan)))
+  // Husky 9 runs each hook with sh. Husky 8 has git run it, and git skips a hook without a shebang
+  // (Git for Windows) or without the executable bit (macOS, Linux), so a new one gets both.
+  const isNewLegacyHook = isLegacy && (hook === undefined || hook.trim() === '')
+  await host.write(hookPath, isNewLegacyHook ? `${LEGACY_HUSKY_HEADER}${huskyBlock(scan)}` : prependBlock(hook, huskyBlock(scan)))
+  const isChmodFailed = isNewLegacyHook && !isWindows(host) && !succeeded(await host.run(['chmod', '+x', hookPath], root))
 
   if (!isHuskyActive) {
-    const huskyBin = await huskyEntry(host, root)
-    const activated = huskyBin === undefined ? undefined : await host.run(['node', huskyBin], root)
-    if (!succeeded(activated)) {
+    const activated = husky.entry === undefined ? undefined : await host.run(['node', husky.entry, ...(isLegacy ? ['install'] : [])], root)
+    if (activated === undefined) {
       return {
         kind: 'warn',
         message: 'Wrote .husky/pre-commit, but could not turn Husky on (are node_modules installed?). Run the project install.',
       }
+    }
+    if (!isHuskyOn(activated, isLegacy)) {
+      return { kind: 'warn', message: `Wrote .husky/pre-commit, but Husky did not turn on: ${failure(activated)}` }
     }
   }
 
@@ -424,9 +442,12 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
       ? 'added a prepare script'
       : /husky/.test(prepare) ? undefined : `the prepare script does not run husky (${prepare}), so teammates must turn it on after cloning`,
     'added gitleaks to .husky/pre-commit',
+    isChmodFailed ? `it is not executable, so git skips it: run chmod +x ${HUSKY_HOOK}` : undefined,
   ].filter((n): n is string => n !== undefined)
   const sentence = notes.join('; ')
-  const hint = (await isTracked(host, root, HUSKY_HOOK)) ? '' : commitHint(HUSKY_HOOK)
+  // Git for Windows records a new file as not executable, so macOS and Linux clones would skip the hook.
+  const chmodInIndex = isNewLegacyHook && isWindows(host) ? `git update-index --chmod=+x ${HUSKY_HOOK}` : undefined
+  const hint = (await isTracked(host, root, HUSKY_HOOK)) ? '' : commitHint(HUSKY_HOOK, chmodInIndex)
   return { kind: 'added', message: `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.${hint}` }
 }
 
@@ -436,11 +457,25 @@ const BOM = '\uFEFF'
 const parseJson = (text: string): unknown => JSON.parse(text.startsWith(BOM) ? text.slice(1) : text)
 
 /**
- * package.json with `scripts.prepare` set to PREPARE_SCRIPT, keeping its byte order mark,
- * indentation, key order, line endings and final newline; undefined when it is not a JSON object.
- * Written by the mod itself rather than through `npm pkg set`, which on Windows is a `.cmd` launcher.
+ * Whether running Husky turned it on. Husky 9 prints why it did not (`HUSKY=0 skip install`,
+ * `.git can't be found`) and still exits 0, and prints nothing when it did. Husky 8 says
+ * `Git hooks installed`, and also exits 0 when it skipped.
  */
-export function withPrepareScript(text: string): string | undefined {
+const isHuskyOn = (r: ProcessRunResult, isLegacy: boolean): boolean =>
+  r.exitCode === 0 && (isLegacy ? /Git hooks installed/.test(r.stdout) : r.stdout.trim() === '')
+
+/** The major version a dependency range starts at (`^8.0.3` is 8), or undefined for any other form. */
+function declaredMajor(range: string | undefined): number | undefined {
+  const m = /^[\^~=v]*(\d+)/.exec(range?.trim() ?? '')
+  return m === null ? undefined : Number(m[1])
+}
+
+/**
+ * package.json with `scripts.prepare` set to `script`, keeping its byte order mark, indentation,
+ * key order, line endings and final newline; undefined when it is not a JSON object. Written by
+ * the mod itself rather than through `npm pkg set`, which on Windows is a `.cmd` launcher.
+ */
+export function withPrepareScript(text: string, script: string = PREPARE_SCRIPT): string | undefined {
   let data: unknown
   try {
     data = parseJson(text)
@@ -450,7 +485,7 @@ export function withPrepareScript(text: string): string | undefined {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined
   const manifest = data as Record<string, unknown>
   const scripts = typeof manifest.scripts === 'object' && manifest.scripts !== null ? manifest.scripts : {}
-  manifest.scripts = { ...scripts, prepare: PREPARE_SCRIPT }
+  manifest.scripts = { ...scripts, prepare: script }
   const indent = /^[ \t]+(?=")/m.exec(text)?.[0] ?? '  '
   const eol = text.includes('\r\n') ? '\r\n' : '\n'
   const bom = text.startsWith(BOM) ? BOM : ''
@@ -490,19 +525,23 @@ async function findLefthookConfig(host: Host, root: string): Promise<string | un
 }
 
 /**
- * The script Husky's package names as its `husky` command, run with `node`. Going through the
- * package rather than `node_modules/.bin/husky` works on Windows too, where that is a `.cmd`
- * launcher a process cannot start without a shell.
+ * The installed Husky: the script its package names as its `husky` command, run with `node`, and
+ * its major version. Going through the package rather than `node_modules/.bin/husky` works on
+ * Windows too, where that is a `.cmd` launcher a process cannot start without a shell.
  */
-async function huskyEntry(host: Host, root: string): Promise<string | undefined> {
+async function huskyPackage(host: Host, root: string): Promise<{ entry?: string; major?: number }> {
   const manifest = await readText(host, `${root}/node_modules/husky/package.json`)
-  if (manifest === undefined) return undefined
+  if (manifest === undefined) return {}
   try {
-    const bin = (parseJson(manifest) as { bin?: string | Record<string, string> }).bin
-    const entry = typeof bin === 'string' ? bin : bin?.husky
-    return entry === undefined ? undefined : `${root}/node_modules/husky/${entry.replace(/^\.\//, '')}`
+    const data = parseJson(manifest) as { bin?: string | Record<string, string>; version?: string }
+    const entry = typeof data.bin === 'string' ? data.bin : data.bin?.husky
+    const major = typeof data.version === 'string' ? declaredMajor(data.version) : undefined
+    return {
+      entry: entry === undefined ? undefined : `${root}/node_modules/husky/${entry.replace(/^\.\//, '')}`,
+      major,
+    }
   } catch {
-    return undefined
+    return {}
   }
 }
 
