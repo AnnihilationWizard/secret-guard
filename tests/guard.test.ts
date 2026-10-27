@@ -46,8 +46,8 @@ function installHusky(fake: Fake): void {
 }
 
 const COMMIT_CONFIG_HINT =
-  ' Commit .pre-commit-config.yaml so other worktrees and clones get it: git add .pre-commit-config.yaml && git commit'
-const COMMIT_HUSKY_HINT = ' Commit .husky/pre-commit so other worktrees and clones get it: git add .husky/pre-commit && git commit'
+  ' Commit .pre-commit-config.yaml so other worktrees and clones get it: git add .pre-commit-config.yaml, then git commit'
+const COMMIT_HUSKY_HINT = ' Commit .husky/pre-commit so other worktrees and clones get it: git add .husky/pre-commit, then git commit'
 
 function fakeHost(fake: Fake): Host {
   return {
@@ -147,6 +147,13 @@ test('reminds to commit a config that is set up but not committed', async () => 
     kind: 'warn',
     message: `.pre-commit-config.yaml is not committed.${COMMIT_CONFIG_HINT}`,
   })
+})
+
+test('the commit hint names each command, since Windows PowerShell 5.1 rejects &&', async () => {
+  const fake = base()
+  const outcome = await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
+  expect(outcome.kind === 'added' && outcome.message).toContain('git add .pre-commit-config.yaml, then git commit')
+  expect(outcome.kind === 'added' && outcome.message).not.toContain('&&')
 })
 
 test('worktree with the shared hook but no config: creates the config so commits are not blocked', async () => {
@@ -431,7 +438,7 @@ test('only Lefthook installed: creates lefthook.yml before lefthook install', as
   expect(outcome).toEqual({
     kind: 'added',
     message:
-      'Created lefthook.yml (gitleaks) and ran lefthook install. Commit lefthook.yml so other worktrees and clones get it: git add lefthook.yml && git commit',
+      'Created lefthook.yml (gitleaks) and ran lefthook install. Commit lefthook.yml so other worktrees and clones get it: git add lefthook.yml, then git commit',
   })
   expect(fake.files[`${ROOT}/lefthook.yml`]).toBe(lefthookConfig(SCAN))
   expect(fake.ran).toContain('lefthook install')
@@ -594,7 +601,7 @@ test('picking Lefthook switches a project secret-guard set up with pre-commit, r
     message:
       'Created lefthook.yml (gitleaks) and ran lefthook install. ' +
       'Switched this project from pre-commit to lefthook; delete .pre-commit-config.yaml, which secret-guard wrote. ' +
-      'Commit lefthook.yml so other worktrees and clones get it: git add lefthook.yml && git commit',
+      'Commit lefthook.yml so other worktrees and clones get it: git add lefthook.yml, then git commit',
   })
 })
 

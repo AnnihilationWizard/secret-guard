@@ -50,9 +50,12 @@ async function isTracked(host: Host, root: string, path: string): Promise<boolea
   return succeeded(await host.run(['git', 'ls-files', '--error-unmatch', '--', path], root))
 }
 
-/** An uncommitted hook file exists only in this folder: other worktrees and fresh clones lack it. */
+/**
+ * An uncommitted hook file exists only in this folder: other worktrees and fresh clones lack it.
+ * The commands are named one by one: Windows PowerShell 5.1 rejects `&&`.
+ */
 const commitHint = (path: string): string =>
-  ` Commit ${path} so other worktrees and clones get it: git add ${path} && git commit`
+  ` Commit ${path} so other worktrees and clones get it: git add ${path}, then git commit`
 
 export function hostFrom($: EngineInterface): Host {
   return {
