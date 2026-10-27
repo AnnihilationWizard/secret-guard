@@ -180,14 +180,18 @@ fi
 `
 }
 
-/** Puts the block right after the hook's shebang, so it runs before any other command (an exit included). */
+/**
+ * Puts the block right after the hook's shebang, so it runs before any other command (an exit
+ * included). The block takes the file's own line endings, so a CRLF file stays CRLF throughout.
+ */
 export function prependBlock(existing: string | undefined, block: string): string {
   if (existing === undefined || existing.trim() === '') return block
-  const lines = existing.split('\n')
-  if (lines[0]?.startsWith('#!')) {
-    return [lines[0], block.trimEnd(), ...lines.slice(1)].join('\n')
-  }
-  return `${block}${existing}`
+  const eol = existing.includes('\r\n') ? '\r\n' : '\n'
+  const text = block.replace(/\r?\n/g, eol)
+  if (!existing.startsWith('#!')) return `${text}${existing}`
+  const lineEnd = existing.indexOf('\n')
+  if (lineEnd < 0) return `${existing}${eol}${text}`
+  return `${existing.slice(0, lineEnd + 1)}${text}${existing.slice(lineEnd + 1)}`
 }
 
 type PackageManager = { name: string; add: string[] }

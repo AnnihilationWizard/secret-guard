@@ -781,3 +781,20 @@ test('scanCommand picks the command for the gitleaks version', () => {
 test('prependBlock keeps the shebang first', () => {
   expect(prependBlock('#!/bin/sh\nnpm test\n', 'X\n')).toBe('#!/bin/sh\nX\nnpm test\n')
 })
+
+test('prependBlock gives the block the line endings of a CRLF hook', () => {
+  expect(prependBlock('#!/bin/sh\r\nnpm test\r\n', 'X\nY\n')).toBe('#!/bin/sh\r\nX\r\nY\r\nnpm test\r\n')
+  expect(prependBlock('npm test\r\n', 'X\n')).toBe('X\r\nnpm test\r\n')
+  expect(prependBlock('#!/bin/sh', 'X\n')).toBe('#!/bin/sh\nX\n')
+})
+
+test('a CRLF Husky hook gets the gitleaks step with CRLF line endings only', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/package.json`] = '{"devDependencies":{"husky":"^9.1.0"},"scripts":{"prepare":"husky"}}'
+  fake.files[`${ROOT}/.husky/pre-commit`] = '#!/usr/bin/env sh\r\nnpm test\r\n'
+  installHusky(fake)
+  await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
+  const hook = fake.files[`${ROOT}/.husky/pre-commit`] ?? ''
+  expect(hook).toContain('gitleaks git --pre-commit')
+  expect(hook.replace(/\r\n/g, '')).not.toContain('\n')
+})
