@@ -267,6 +267,24 @@ test('withPrepareScript keeps indentation, key order, line endings and the final
   expect(withPrepareScript('{not json')).toBeUndefined()
 })
 
+test('withPrepareScript reads a package.json with a byte order mark and keeps the mark', () => {
+  expect(withPrepareScript('﻿{\r\n  "name": "app"\r\n}\r\n')).toBe(
+    '﻿{\r\n  "name": "app",\r\n  "scripts": {\r\n    "prepare": "husky || true"\r\n  }\r\n}\r\n',
+  )
+})
+
+test('a package.json saved with a byte order mark, as Windows PowerShell 5.1 does, is set up like any other', async () => {
+  const fake = lefthookOnly()
+  fake.files[`${ROOT}/package.json`] = '﻿{\r\n  "name": "app",\r\n  "devDependencies": {\r\n    "husky": "^9.1.0"\r\n  }\r\n}\r\n'
+  installHusky(fake)
+  const outcome = await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
+  // Read as a Husky project, not as one without Husky that gets Lefthook.
+  expect(outcome.kind === 'added' && outcome.message).toContain('Added a prepare script; added gitleaks to .husky/pre-commit')
+  expect(fake.files[`${ROOT}/lefthook.yml`]).toBeUndefined()
+  expect(fake.files[`${ROOT}/package.json`]?.startsWith('﻿{\r\n')).toBe(true)
+  expect(fake.files[`${ROOT}/package.json`]).toContain('"prepare": "husky || true"')
+})
+
 test('installs Husky with -w at a pnpm workspace root', async () => {
   const fake = base()
   fake.files[`${ROOT}/package.json`] = '{"name":"mono","scripts":{"prepare":"husky || true"}}'

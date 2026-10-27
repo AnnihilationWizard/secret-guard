@@ -369,7 +369,7 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
 
   let pkg: PackageJson
   try {
-    pkg = JSON.parse(await host.read(`${root}/package.json`)) as PackageJson
+    pkg = parseJson(await host.read(`${root}/package.json`)) as PackageJson
   } catch {
     return { kind: 'warn', message: 'package.json could not be parsed. Nothing was changed.' }
   }
@@ -423,15 +423,20 @@ async function ensureHusky(host: Host, root: string, scan: string, options: Guar
   return { kind: 'added', message: `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}.${hint}` }
 }
 
+const BOM = '\uFEFF'
+
+/** JSON.parse that accepts a leading byte order mark, which Windows PowerShell 5.1 writes. */
+const parseJson = (text: string): unknown => JSON.parse(text.startsWith(BOM) ? text.slice(1) : text)
+
 /**
- * package.json with `scripts.prepare` set to PREPARE_SCRIPT, keeping its indentation, key order,
- * line endings and final newline; undefined when it is not a JSON object. Written by the mod
- * itself rather than through `npm pkg set`, which on Windows is a `.cmd` launcher.
+ * package.json with `scripts.prepare` set to PREPARE_SCRIPT, keeping its byte order mark,
+ * indentation, key order, line endings and final newline; undefined when it is not a JSON object.
+ * Written by the mod itself rather than through `npm pkg set`, which on Windows is a `.cmd` launcher.
  */
 export function withPrepareScript(text: string): string | undefined {
   let data: unknown
   try {
-    data = JSON.parse(text)
+    data = parseJson(text)
   } catch {
     return undefined
   }
@@ -441,7 +446,8 @@ export function withPrepareScript(text: string): string | undefined {
   manifest.scripts = { ...scripts, prepare: PREPARE_SCRIPT }
   const indent = /^[ \t]+(?=")/m.exec(text)?.[0] ?? '  '
   const eol = text.includes('\r\n') ? '\r\n' : '\n'
-  const body = JSON.stringify(manifest, null, indent).replace(/\n/g, eol)
+  const bom = text.startsWith(BOM) ? BOM : ''
+  const body = `${bom}${JSON.stringify(manifest, null, indent).replace(/\n/g, eol)}`
   return /\r?\n$/.test(text) ? `${body}${eol}` : body
 }
 
@@ -463,7 +469,7 @@ const hasHuskyDependency = (pkg: PackageJson): boolean =>
 
 async function readPackageJson(host: Host, root: string): Promise<PackageJson | undefined> {
   try {
-    return JSON.parse(await host.read(`${root}/package.json`)) as PackageJson
+    return parseJson(await host.read(`${root}/package.json`)) as PackageJson
   } catch {
     return undefined
   }
@@ -485,7 +491,7 @@ async function huskyEntry(host: Host, root: string): Promise<string | undefined>
   const manifest = await readText(host, `${root}/node_modules/husky/package.json`)
   if (manifest === undefined) return undefined
   try {
-    const bin = (JSON.parse(manifest) as { bin?: string | Record<string, string> }).bin
+    const bin = (parseJson(manifest) as { bin?: string | Record<string, string> }).bin
     const entry = typeof bin === 'string' ? bin : bin?.husky
     return entry === undefined ? undefined : `${root}/node_modules/husky/${entry.replace(/^\.\//, '')}`
   } catch {
