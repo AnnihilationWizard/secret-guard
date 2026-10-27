@@ -485,6 +485,60 @@ test('JS project that already uses Husky keeps Husky even with Lefthook installe
   expect(fake.files[`${ROOT}/lefthook.yml`]).toBeUndefined()
 })
 
+const WINDOWS_TOOL_DIR = 'C:\\Users\\dev\\.claude\\plugins\\secret-guard'
+
+test('on Windows, Lefthook installed with npm (a .cmd launcher) is found and installed through cmd', async () => {
+  const fake = base()
+  delete fake.commands['pre-commit --version']
+  // lefthook.cmd cannot start without a shell, so only the cmd runs answer.
+  fake.commands['cmd /d /s /c lefthook version'] = { stdout: '1.11.0\n' }
+  fake.commands['cmd /d /s /c lefthook install'] = {}
+  const host = { ...fakeHost(fake), toolDir: WINDOWS_TOOL_DIR }
+  const outcome = await ensureGuard(host, ROOT, { autoInstallHusky: false })
+  expect(outcome.kind === 'added' && outcome.message).toContain('Created lefthook.yml (gitleaks) and ran lefthook install.')
+  expect(fake.ran).toContain('lefthook version')
+  expect(fake.ran).toContain('cmd /d /s /c lefthook install')
+})
+
+test('on Windows, switching away from Lefthook uninstalls its hook through cmd', async () => {
+  const fake = base()
+  fake.commands['pre-commit uninstall'] = {}
+  fake.commands['cmd /d /s /c lefthook version'] = { stdout: '1.11.0\n' }
+  fake.commands['cmd /d /s /c lefthook uninstall'] = {}
+  fake.files[`${ROOT}/lefthook.yml`] = lefthookConfig(SCAN)
+  fake.files[`${ROOT}/.git/hooks/pre-commit`] = LEFTHOOK_HOOK
+  const host = { ...fakeHost(fake), toolDir: WINDOWS_TOOL_DIR }
+  await ensureGuard(host, ROOT, { autoInstallHusky: false, preferredManager: 'pre-commit' })
+  expect(fake.ran).toContain('cmd /d /s /c lefthook uninstall')
+  expect(fake.ran.indexOf('cmd /d /s /c lefthook uninstall')).toBeLessThan(fake.ran.indexOf('pre-commit install'))
+})
+
+test('outside Windows, a lefthook that cannot start is not retried through cmd', async () => {
+  const fake = base()
+  fake.files[`${ROOT}/lefthook.yml`] = lefthookConfig(SCAN)
+  await ensureGuard(fakeHost(fake), ROOT, { autoInstallHusky: false })
+  expect(fake.ran.some(c => c.startsWith('cmd '))).toBe(false)
+})
+
+test('a Lefthook config that exists but cannot be read is never written over', async () => {
+  const fake = lefthookOnly()
+  fake.files[`${ROOT}/lefthook.yml`] = 'pre-commit: {}\n'
+  const host = fakeHost(fake)
+  const read = host.read
+  let reads = 0
+  // The first read (to choose the manager) works; the second, in the Lefthook step, is refused.
+  const flaky: Host = {
+    ...host,
+    read: async path => (path.endsWith('lefthook.yml') && ++reads > 1 ? Promise.reject(new Error('refused')) : read(path)),
+  }
+  expect(await ensureGuard(flaky, ROOT, { autoInstallHusky: false })).toEqual({
+    kind: 'warn',
+    message: 'lefthook.yml could not be read. Nothing was changed.',
+  })
+  expect(fake.files[`${ROOT}/lefthook.yml`]).toBe('pre-commit: {}\n')
+  expect(fake.ran).not.toContain('lefthook install')
+})
+
 // --- Both managers ------------------------------------------------------------------------------
 
 const bothInstalled = (): Fake => {

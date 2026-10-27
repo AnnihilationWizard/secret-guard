@@ -100,7 +100,24 @@ async function fileExists(host: Host, path: string): Promise<boolean> {
 
 /** Whether a hook manager's command is installed and runs, checked from the mod's own folder. */
 export async function isInstalled(host: Host, manager: Manager): Promise<boolean> {
-  return succeeded(await host.run(manager === 'lefthook' ? ['lefthook', 'version'] : ['pre-commit', '--version'], host.toolDir))
+  return succeeded(await runManager(host, manager, manager === 'lefthook' ? ['version'] : ['--version'], host.toolDir))
+}
+
+/**
+ * Runs a hook manager. On Windows, Lefthook installed with `npm install -g` is a `.cmd` launcher
+ * that a process cannot start without a shell, so a run that could not start is tried again through cmd.
+ */
+async function runManager(
+  host: Host,
+  manager: Manager,
+  args: readonly string[],
+  cwd: string,
+  timeoutMs?: number,
+): Promise<ProcessRunResult | undefined> {
+  const argv = [manager, ...args]
+  const direct = await host.run(argv, cwd, timeoutMs)
+  if (direct !== undefined || manager !== 'lefthook' || !isWindows(host)) return direct
+  return host.run(['cmd', '/d', '/s', '/c', ...argv], cwd, timeoutMs)
 }
 
 /** Where `cwd` stands: in a repository, outside any, or in a folder where commands cannot start. */
@@ -281,7 +298,11 @@ async function ensureLefthook(host: Host, root: string, scan: string, existing: 
 
   const file = existing ?? LEFTHOOK_CONFIG
   const configPath = `${root}/${file}`
-  const config = existing === undefined ? undefined : await host.read(configPath)
+  const config = existing === undefined ? undefined : await readText(host, configPath)
+  // Never write over a config that is there but could not be read.
+  if (existing !== undefined && config === undefined) {
+    return { kind: 'warn', message: `${file} could not be read. Nothing was changed.` }
+  }
   if (config !== undefined && !/gitleaks/.test(config)) {
     return {
       kind: 'warn',
@@ -308,7 +329,7 @@ async function ensureLefthook(host: Host, root: string, scan: string, existing: 
   if (config === undefined) await host.write(configPath, lefthookConfig(scan))
 
   if (!isHookInstalled) {
-    const install = await host.run(['lefthook', 'install'], root, 60_000)
+    const install = await runManager(host, 'lefthook', ['install'], root, 60_000)
     if (!succeeded(install)) {
       return { kind: 'warn', message: `lefthook install failed: ${failure(install)}` }
     }
@@ -479,7 +500,7 @@ const isOwn = (config: string | undefined): boolean => config !== undefined && c
 async function uninstallHook(host: Host, root: string, manager: Manager): Promise<void> {
   const hook = await installedHook(host, root)
   const isTheirs = manager === 'lefthook' ? isLefthookHook(hook) : isPreCommitHook(hook)
-  if (isTheirs && (await isInstalled(host, manager))) await host.run([manager, 'uninstall'], root, 60_000)
+  if (isTheirs && (await isInstalled(host, manager))) await runManager(host, manager, ['uninstall'], root, 60_000)
 }
 
 const configName = (manager: Manager, lefthookFile: string | undefined): string =>
