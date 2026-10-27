@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.6] - 2026-10-27
+
+- Fixed: on Windows, Lefthook installed with `npm install -g lefthook` read as not installed, and `lefthook install` and `lefthook uninstall` could not run. npm installs it as a `.cmd` launcher, which cannot start without a shell; on Windows such a Lefthook run is now tried again through `cmd`.
+- Fixed: with Husky 8, a `.husky/pre-commit` secret-guard created had no shebang and was not executable, so git skipped it on every platform, and Husky was never turned on (run bare, Husky 8 only prints its help). A new Husky 8 hook now starts with the lines `husky add` writes and is made executable outside Windows; on Windows the commit hint adds `git update-index --chmod=+x .husky/pre-commit`. Husky 8 is turned on with `husky install`, and an added prepare script is `husky install || true`. Husky 9 projects are set up as before.
+- Fixed: Husky 9 exits 0 even when it did not turn on, printing why (`HUSKY=0 skip install`, `.git can't be found`), and the notice said Husky was on. The notice now gives Husky's reason.
+- Fixed: a `package.json` saved with a byte order mark, as Windows PowerShell 5.1 does, read as broken, or as having no Husky. The mark is now skipped when reading and kept when the prepare script is written.
+- Fixed: adding gitleaks to a `.husky/pre-commit` with CRLF line endings mixed in LF ones. The added lines now take the file's own line endings.
+- Fixed: the commit hint read `git add <file> && git commit`, which Windows PowerShell 5.1 rejects. It now reads `git add <file>, then git commit`.
+- Fixed: the `.husky/pre-commit` step's warning for a missing gitleaks said `brew install gitleaks`, though the hook runs on every teammate's system. It now links the gitleaks install guide.
+- Fixed: a Lefthook config that exists but cannot be read is left alone with a notice, instead of being written over.
+
 ## [1.1.5] - 2026-10-19
 
 - Fixed: `/secret-guard-use` with a manager that is not installed said "Picked pre-commit: new projects get it from now on", though a pick only counts while that manager is installed, so new projects kept the other one. Such a pick is now refused, nothing is stored or changed, and the output says how to install the manager for the platform.
@@ -73,6 +84,7 @@ Initial release of secret-guard by AnnihilationWizard.
 
 Built on Claude Code's early-access function-hooks mod API.
 
+[1.1.6]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.6
 [1.1.5]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.5
 [1.1.4]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.4
 [1.1.3]: https://github.com/AnnihilationWizard/secret-guard/releases/tag/v1.1.3

@@ -6,11 +6,11 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.1.5-green.svg" alt="Version 1.1.5"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/Version-1.1.6-green.svg" alt="Version 1.1.6"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"></a>
   <a href="https://code.claude.com/docs"><img src="https://img.shields.io/badge/Platform-Claude%20Code-D97757.svg" alt="Platform: Claude Code"></a>
   <a href="hooks/register.ts"><img src="https://img.shields.io/badge/Type-Function%20hooks%20mod-6E7681.svg" alt="Function hooks mod"></a>
-  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-56%20passing-3FB950.svg" alt="56 tests passing"></a>
+  <a href="tests/guard.test.ts"><img src="https://img.shields.io/badge/Tests-74%20passing-3FB950.svg" alt="74 tests passing"></a>
 </p>
 
 <p align="center">
@@ -43,7 +43,7 @@ Installing `gitleaks` and a hook manager on your machine does not protect a repo
 
 - **Set up once per project:** A project that already has a gitleaks hook is left alone, and the check never delays your first prompt.
 - **pre-commit or Lefthook:** Writes a `.pre-commit-config.yaml` or a `lefthook.yml` that runs your installed `gitleaks`, then installs the hook. A project keeps the manager its config already uses, in any file name and format Lefthook reads.
-- **Husky for JS/TS:** Puts the gitleaks step at the top of `.husky/pre-commit` in projects that use Husky. A JS/TS project without Husky gets Lefthook when it is installed, so no dependency is added.
+- **Husky for JS/TS:** Puts the gitleaks step at the top of `.husky/pre-commit` in projects that use Husky 9, or Husky 8 and older. A JS/TS project without Husky gets Lefthook when it is installed, so no dependency is added.
 - **One manager, your pick:** When both pre-commit and Lefthook are installed, secret-guard asks you to pick one with `/secret-guard-use`, switches the projects it set up, and can remove the other.
 - **Worktrees work too:** A worktree shares the repository's installed hook but not an uncommitted config. Its commits would be blocked (pre-commit) or skip the scan (Lefthook), so secret-guard adds the config there and reminds you to commit it.
 - **Respects your setup:** An existing config without gitleaks, or a `core.hooksPath` set by another tool, gets a notice instead of a change.
@@ -171,6 +171,8 @@ In a pnpm workspace root, secret-guard installs with `pnpm add -w`. The pick fro
 - Teammates need `gitleaks` and the same hook manager.
 - Husky sets `core.hooksPath`, so hooks in `.git/hooks` stop running in that project, and pre-commit or Lefthook cannot install there.
 - Yarn Plug'n'Play projects have no `node_modules/husky`. secret-guard writes the hook and asks you to turn Husky on.
+- With Husky 8 and older, git runs `.husky/pre-commit` itself, so a new one must be executable. secret-guard makes it so on macOS and Linux. On Windows, the notice adds `git update-index --chmod=+x .husky/pre-commit` to the commit commands, so macOS and Linux clones run it too.
+- On Windows, Lefthook installed with npm is a `.cmd` launcher; secret-guard runs it through `cmd`.
 - On Windows, a project folder whose path is longer than about 260 characters stops commands from starting there. secret-guard shows a notice that the project is not protected; move it to a shorter path.
 - The `/plugin install` command is available in terminal sessions only. A user-scope install also loads in the desktop app's Code tab.
 
